@@ -3,7 +3,7 @@ name: Deploy Plugin to Infomaniak
 on:
   push:
     branches:
-      - main  # Déclenche l'action quand on push sur main
+      - dev  # Déclenche l'action quand on push sur main
 
 jobs:
   deploy:
