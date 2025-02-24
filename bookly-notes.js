@@ -1,9 +1,7 @@
 jQuery(document).ready(function($){
-  console.log("[Bookly+Notes] Script chargé.");
-
-  // 1) Objet pour associer location_id => nom et location_id => couleur
-  let locationDict   = {}; // { "5": "Arlon", ... }
-  let locationColors = {
+  // Mapping des noms et couleurs par ID de location
+  let locationDict   = {}; 
+  const locationColors = {
     '5':  '#E74C3C',   // Esch-sur-alzette
     '6':  '#27AE60',   // Luxembourg
     '7':  '#2980B9',   // Kirchberg
@@ -16,17 +14,20 @@ jQuery(document).ready(function($){
     '14': '#F39C12',   // Nyon
     '15': '#C0392B'    // Montreux
   };
-  
 
-  // 2) SVG plusIcon pour indiquer qu'une note existe
+  // SVG pour indiquer qu'une note existe et pour le bouton d'ajout
   const plusIcon = `
-    <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="14" height="14" viewBox="0 0 26 26" fill="#FFF" style="vertical-align: middle;">
-      <path d="M13.5,3.188C7.805,3.188,3.188,7.805,3.188,13.5S7.805,23.813,13.5,23.813S23.813,19.195,23.813,13.5
-      S19.195,3.188,13.5,3.188z M19,15h-4v4h-3v-4H8v-3h4V8h3v4h4V15z"></path>
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 26 26" fill="#FFF" style="vertical-align: middle;">
+      <path d="M13.5,3.188C7.805,3.188,3.188,7.805,3.188,13.5S7.805,23.813,13.5,23.813S23.813,19.195,23.813,13.5 S19.195,3.188,13.5,3.188z M19,15h-4v4h-3v-4H8v-3h4V8h3v4h4V15z"></path>
+    </svg>
+  `;
+  const addNoteIcon = `
+    <svg width="12" height="12" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" style="margin-top:6px;margin-bottom:6px;">
+      <g fill="#000" fill-rule="evenodd" stroke="none"><g transform="scale(10.66667,10.66667)"><path d="M11,2v9h-9v2h9v9h2v-9h9v-2h-9v-9z"></path></g></g>
     </svg>
   `;
 
-  // 3) Charger la liste des locations UNE FOIS pour remplir locationDict
+  // Récupère la liste des locations et remplit locationDict
   function fetchAllLocations() {
     return $.ajax({
       url: BooklyNotesAjax.ajax_url,
@@ -35,20 +36,18 @@ jQuery(document).ready(function($){
       dataType: 'json'
     }).done(function(resp){
       if (resp.success) {
-        let locs = resp.data.locations || [];
-        console.log("[Bookly+Notes] fetchAllLocations =>", locs);
-        locs.forEach(loc => {
+        (resp.data.locations || []).forEach(loc => {
           locationDict[loc.id] = loc.name;
         });
       } else {
-        console.warn("[Bookly+Notes] fetchAllLocations error =>", resp.data);
+        console.error("[Bookly+Notes] fetchAllLocations error:", resp.data);
       }
     }).fail(function(err){
-      console.error("[Bookly+Notes] fetchAllLocations AJAX fail =>", err);
+      console.error("[Bookly+Notes] fetchAllLocations AJAX fail:", err);
     });
   }
 
-  // 4) Création du modal s'il n'existe pas déjà
+  // Création du modal (uniquement s'il n'existe pas déjà)
   if (!$('#myModal').length) {
     $('body').append(`
       <div id="myModal" class="my-modal">
@@ -69,32 +68,24 @@ jQuery(document).ready(function($){
         </div>
       </div>
     `);
-    $('#myModal .my-modal-close').on('click', () => {
-      console.log("[Bookly+Notes] Modal fermé (croix)");
-      $('#myModal').hide();
-    });
+    $('#myModal .my-modal-close').on('click', () => $('#myModal').hide());
     $('#myModal').on('click', function(e){
       if ($(e.target).is('#myModal')) {
-        console.log("[Bookly+Notes] Modal fermé (zone grise)");
         $('#myModal').hide();
       }
     });
-  } else {
-    console.log("[Bookly+Notes] Modal déjà présent.");
   }
 
-  const $modal            = $('#myModal');
-  const $modalTitle       = $('#myModalTitle');
-  const $modalTextarea    = $('#myModalTextarea');
-  const $modalLocDropdown = $('#myModalLocationDropdown');
-  const $modalSaveBtn     = $('#myModalSaveBtn');
-  const $modalDeleteBtn   = $('#myModalDeleteBtn');
+  const $modal            = $('#myModal'),
+        $modalTitle       = $('#myModalTitle'),
+        $modalTextarea    = $('#myModalTextarea'),
+        $modalLocDropdown = $('#myModalLocationDropdown'),
+        $modalSaveBtn     = $('#myModalSaveBtn'),
+        $modalDeleteBtn   = $('#myModalDeleteBtn');
 
+  let currentDayId   = null,
+      currentSubcell = null;
 
-  let currentDayId   = null;
-  let currentSubcell = null;
-
-  // Code SVG du spinner
   const subcellSpinner = `
     <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <style>
@@ -105,20 +96,22 @@ jQuery(document).ready(function($){
     </svg>
   `;
 
-  // Observer : surveille <time> pour détecter les changements
+  // Attache un observer sur le <time> de la cellule pour détecter des modifications
   function observeHeaderCell($dayCell) {
     const timeEl = $dayCell.find('time[datetime], time[aria-label]').get(0);
-    if (!timeEl) return;
-    const observer = new MutationObserver(function(mutations) {
+    if (!timeEl) {
+      console.error("[Bookly+Notes] Aucun <time> trouvé dans la cellule", $dayCell);
+      return;
+    }
+    const observer = new MutationObserver(() => {
       $dayCell.removeClass('cells-initialized').find('.my-extra-row').remove();
       addThreeSubcellsTo($dayCell);
       observer.disconnect();
     });
     observer.observe(timeEl, { characterData: true, childList: true, subtree: true });
-    console.log("[Bookly+Notes] Observer attaché à", $dayCell);
   }
 
-  // Injection des sous-cellules dans une cellule donnée
+  // Injection et mise à jour des sous-cellules dans une cellule d'en‑tête
   function addThreeSubcellsTo($dayCell) {
     $dayCell.find('.my-extra-row').remove();
     $dayCell.removeClass('cells-initialized');
@@ -127,11 +120,8 @@ jQuery(document).ready(function($){
     const ariaLabel = $dayCell.find('time[aria-label]').attr('aria-label');
     if (ariaLabel) {
       dayId = moment(ariaLabel, "dddd D MMMM YYYY", "fr").format("YYYY-MM-DD");
-      console.log("[Bookly+Notes] Récupération via aria-label :", ariaLabel, "->", dayId);
     } else {
-      const raw = $dayCell.find('time[datetime]').attr('datetime') || '';
-      dayId = raw.trim();
-      console.log("[Bookly+Notes] Récupération via datetime :", dayId);
+      dayId = ($dayCell.find('time[datetime]').attr('datetime') || "").trim();
     }
     $dayCell.addClass('cells-initialized');
     $dayCell.append(`
@@ -141,63 +131,66 @@ jQuery(document).ready(function($){
         <div class="my-subcell" data-subcell="3">${subcellSpinner}</div>
       </div>
     `);
-    console.log("[Bookly+Notes] Sous-cellules injectées pour dayId =", dayId);
 
+    // Pour chaque sous-cellule, on effectue une requête GET afin d'afficher la note
     for (let sc = 1; sc <= 3; sc++) {
       const $subcell = $dayCell.find(`.my-subcell[data-subcell='${sc}']`);
       const combinedId = dayId + "-" + sc;
-      console.log("[Bookly+Notes] GET note => combinedId =", combinedId);
-
       $.ajax({
         url: BooklyNotesAjax.ajax_url,
         method: 'GET',
         data: { action: 'bookly_get_note', day_id: combinedId },
         dataType: 'json',
-        success: function(resp){
+        success: function(resp) {
           if (resp.success) {
-            const note       = resp.data.note || "";
+            const note = resp.data.note || "";
             const locationId = resp.data.location_id || "";
-            let locName   = locationDict[locationId] || "";
-            let shortLoc  = locName.substring(0,3).toUpperCase();
-            let hasNote   = note.trim().length > 0;
-            let content   = shortLoc;
+            let locName = locationDict[locationId] || "";
+            let shortLoc = "";
+            if (locName === "Genève CA") {
+              shortLoc = "G_CA";
+            } else if (locName === "Genève EV") {
+              shortLoc = "G_EV";
+            } else {
+              shortLoc = locName.substring(0, 3).toUpperCase();
+            }
+            
+            let hasNote = note.trim().length > 0;
+            let content = shortLoc;
             if (hasNote) {
               content += " " + plusIcon;
+              $subcell.attr('data-tooltip', note);
+            } else {
+              $subcell.removeAttr('data-tooltip');
             }
-            $subcell.html(content || `<span style="color:#000">+</span>`);
+            $subcell.html(content || addNoteIcon);
             if (locationId) {
-              let color = locationColors[locationId] || "#DDD";
-              $subcell.css("background-color", color);
+              $subcell.css("background-color", locationColors[locationId] || "#DDD");
             } else {
               $subcell.css("background-color", "");
             }
-            console.log(`[Bookly+Notes] GET OK: combinedId = '${combinedId}', note = '${note}', location_id = ${resp.data.location_id}`);
           } else {
-            console.warn("[Bookly+Notes] GET ERROR: combinedId =", combinedId, resp.data.message);
-            $subcell.text("+");
+            $subcell.html(addNoteIcon);
           }
         },
-        error: function(err){
+        error: function(err) {
           console.error("[Bookly+Notes] GET AJAX error for combinedId =", combinedId, err);
-          $subcell.text("+");
+          $subcell.html(addNoteIcon);
         }
       });
     }
 
     observeHeaderCell($dayCell);
 
+    // Au clic sur une sous-cellule, on ouvre le modal pour modifier la note
     $dayCell.find('.my-subcell').on('click', function(){
-      currentDayId   = dayId;
+      currentDayId = dayId;
       currentSubcell = $(this).attr('data-subcell');
-      console.log("[Bookly+Notes] Clic sur sous-cellule => dayId =", dayId, ", subcell =", currentSubcell);
       $modalTitle.text("Jour " + dayId + " / Sous-cell " + currentSubcell);
       $modalTextarea.val("");
       $modalLocDropdown.empty().append('<option value="">(Aucune)</option>');
       $modal.show();
-      console.log("[Bookly+Notes] Modal affiché pour dayId =", dayId, ", subcell =", currentSubcell);
-
       const combinedId = dayId + "-" + currentSubcell;
-      console.log("[Bookly+Notes] Rechargement de la note pour combinedId =", combinedId);
       $.ajax({
         url: BooklyNotesAjax.ajax_url,
         method: 'GET',
@@ -207,7 +200,6 @@ jQuery(document).ready(function($){
           if (resp.success) {
             $modalTextarea.val(resp.data.note || "");
             const savedLocId = resp.data.location_id || "";
-            console.log(`[Bookly+Notes] GET (modal) OK: combinedId = '${combinedId}', note = '${resp.data.note}', loc = ${savedLocId}`);
             let locOptions = Object.keys(locationDict).map(id => {
               let color = locationColors[id] || "#000000";
               return `<option value="${id}" data-color="${color}">${locationDict[id]}</option>`;
@@ -215,7 +207,6 @@ jQuery(document).ready(function($){
             $modalLocDropdown.append(locOptions.join(""));
             if (savedLocId) {
               $modalLocDropdown.val(savedLocId);
-              console.log("[Bookly+Notes] Location pré-sélectionnée :", savedLocId);
             }
             $modalLocDropdown.select2({
               width: 'resolve',
@@ -246,7 +237,12 @@ jQuery(document).ready(function($){
               },
               escapeMarkup: function(markup) { return markup; }
             });
+          } else {
+            console.error("[Bookly+Notes] GET (modal) error:", resp.data.message);
           }
+        },
+        error: function(err) {
+          console.error("[Bookly+Notes] GET (modal) AJAX error:", err);
         }
       });
     });
@@ -258,11 +254,9 @@ jQuery(document).ready(function($){
       alert("Erreur : dayId / sous-cellule manquant");
       return;
     }
-    const content     = $modalTextarea.val() || "";
+    const content = $modalTextarea.val() || "";
     const location_id = $modalLocDropdown.val() || "";
-    const combinedId  = currentDayId + "-" + currentSubcell;
-    console.log(`[Bookly+Notes] SAVE -> combinedId='[${combinedId}]', note='[${content}]', loc=[${location_id}]`);
-
+    const combinedId = currentDayId + "-" + currentSubcell;
     $.ajax({
       url: BooklyNotesAjax.ajax_url,
       method: 'POST',
@@ -273,29 +267,32 @@ jQuery(document).ready(function($){
         location_id: location_id
       },
       dataType: 'json',
-      success: function(resp){
+      success: function(resp) {
         if (resp.success) {
-          alert("Note/Location sauvegardés !");
+          alert("La note est sauvegardée !");
           $modal.hide();
           const $dayCell = $(`.ec-day[role="columnheader"].cells-initialized:has(time[datetime='${currentDayId}'])`);
           const $subcell = $dayCell.find(`.my-subcell[data-subcell='${currentSubcell}']`);
-          let locName  = locationDict[location_id] || "";
-          let shortLoc = locName.substring(0,3).toUpperCase();
-          let hasNote  = content.trim().length > 0;
-          let newHtml  = shortLoc + (hasNote ? " " + plusIcon : "");
-          $subcell.html(newHtml || "+");
+          let locName = locationDict[location_id] || "";
+          let shortLoc = locName.substring(0, 3).toUpperCase();
+          let hasNote = content.trim().length > 0;
+          let newHtml = shortLoc + (hasNote ? " " + plusIcon : "");
+          $subcell.html(newHtml || addNoteIcon);
           if (location_id) {
-            let color = locationColors[location_id] || "#DDD";
-            $subcell.css("background-color", color);
+            $subcell.css("background-color", locationColors[location_id] || "#DDD");
           } else {
             $subcell.css("background-color", "");
           }
-          console.log("[Bookly+Notes] Sous-cellule mise à jour avec le contenu :", content);
+          if (hasNote) {
+            $subcell.attr('data-tooltip', content);
+          } else {
+            $subcell.removeAttr('data-tooltip');
+          }
         } else {
           alert("Erreur save_note => " + resp.data.message);
         }
       },
-      error: function(err){
+      error: function(err) {
         console.error("[Bookly+Notes] SAVE AJAX error:", err);
       }
     });
@@ -311,29 +308,24 @@ jQuery(document).ready(function($){
       return;
     }
     const combinedId = currentDayId + "-" + currentSubcell;
-    console.log(`[Bookly+Notes] DELETE -> combinedId='[${combinedId}]'`);
-
     $.ajax({
       url: BooklyNotesAjax.ajax_url,
       method: 'POST',
       data: { action: 'bookly_delete_note', day_id: combinedId },
       dataType: 'json',
-      success: function(resp){
+      success: function(resp) {
         if (resp.success) {
           alert("Note supprimée !");
           $modal.hide();
           const $dayCell = $(`.ec-day[role="columnheader"].cells-initialized:has(time[datetime='${currentDayId}'])`);
           const $subcell = $dayCell.find(`.my-subcell[data-subcell='${currentSubcell}']`);
-
-          $subcell.html("+");
-
-          $subcell.css("background-color", "");
-          console.log("[Bookly+Notes] Sous-cellule réinitialisée après suppression.");
+          $subcell.html(addNoteIcon).css("background-color", "");
+          $subcell.removeAttr('data-tooltip');
         } else {
           alert("Erreur delete_note => " + resp.data.message);
         }
       },
-      error: function(err){
+      error: function(err) {
         console.error("[Bookly+Notes] DELETE AJAX error:", err);
       }
     });
@@ -349,20 +341,18 @@ jQuery(document).ready(function($){
     }, 500);
   });
 
-  // Initialisation via IntersectionObserver et fallback
+  // IntersectionObserver pour les cellules non initialisées
   function initIntersectionObserver() {
     const observerOptions = { root: null, threshold: 0.1 };
-    const intersectionObserver = new IntersectionObserver(function(entries, observer) {
+    const intersectionObserver = new IntersectionObserver((entries, observer) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
-          const $cell = $(entry.target);
-          addThreeSubcellsTo($cell);
+          addThreeSubcellsTo($(entry.target));
           observer.unobserve(entry.target);
         }
       });
     }, observerOptions);
-
-    $('.ec-day[role="columnheader"]').each(function() {
+    $('.ec-day[role="columnheader"]').each(function(){
       if (!$(this).hasClass('cells-initialized')) {
         intersectionObserver.observe(this);
       }
@@ -372,7 +362,7 @@ jQuery(document).ready(function($){
   // Hook sur calendar.refetchEvents() pour rafraîchir les notes lors d'un changement de semaine
   if (typeof calendar !== 'undefined' && calendar.ec && typeof calendar.ec.refetchEvents === 'function') {
     let originalRefetch = calendar.ec.refetchEvents;
-    calendar.ec.refetchEvents = function() {
+    calendar.ec.refetchEvents = function(){
       originalRefetch.apply(this, arguments);
       setTimeout(function(){
         $('.ec-day[role="columnheader"]').each(function(){
@@ -381,17 +371,28 @@ jQuery(document).ready(function($){
         addThreeSubcells();
       }, 500);
     };
+  } else {
+    $(document).on('bookly_calendar_view_changed', function(){
+      $('.ec-day[role="columnheader"]').each(function(){
+        $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
+      });
+      addThreeSubcells();
+    });
+  }
+
+  function addThreeSubcells() {
+    $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function(){
+      addThreeSubcellsTo($(this));
+    });
   }
 
   // Lancement initial
   fetchAllLocations().done(function(){
-    console.log("[Bookly+Notes] All locations fetched =>", locationDict);
     initIntersectionObserver();
     setTimeout(function(){
-      let $notInit = $('.ec-day[role="columnheader"]:not(.cells-initialized)');
-      if ($notInit.length > 0) {
-        $notInit.each(function(){ addThreeSubcellsTo($(this)); });
-      }
+      $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function(){
+        addThreeSubcellsTo($(this));
+      });
     }, 2000);
   });
 });
