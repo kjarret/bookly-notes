@@ -51,6 +51,7 @@
   justify-content: space-around;
   font-weight: 700;
   flex-wrap: wrap;
+  color: white;
 }
 
 .my-subcell:hover {

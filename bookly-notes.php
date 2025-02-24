@@ -160,6 +160,34 @@ function bookly_get_locations_callback() {
     wp_send_json_success( [ 'locations' => $rows ] );
 }
 
+/**
+ * 6) AJAX POST : supprimer une note
+ */
+add_action( 'wp_ajax_bookly_delete_note', 'bookly_delete_note_callback' );
+function bookly_delete_note_callback() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'bookly_notes';
+
+    $day_id = sanitize_text_field( $_POST['day_id'] ?? '' );
+    error_log( "[DEBUG delete_note] day_id='$day_id'" );
+
+    if ( ! $day_id ) {
+        wp_send_json_error( [ 'message' => 'Aucun day_id fourni' ] );
+    }
+
+    $res = $wpdb->delete(
+        $table_name,
+        [ 'day_id' => $day_id ],
+        [ '%s' ]
+    );
+    if ( $res === false ) {
+        error_log( "[DEBUG delete_note] DELETE ERROR: " . $wpdb->last_error );
+        wp_send_json_error( [ 'message' => 'Erreur lors de la suppression.' ] );
+    } else {
+        error_log( "[DEBUG delete_note] DELETE result: " . print_r($res, true) );
+        wp_send_json_success( [ 'message' => 'Note supprimée.' ] );
+    }
+}
 
 function admin_enqueue_scripts_callback(){
 
