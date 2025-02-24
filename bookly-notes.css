@@ -83,16 +83,42 @@
   background-color: rgb(183, 41, 20);
 }
 
-.svg-circle {
-  fill: red;
-  background-color: red;
-}
-
 .my-modal .select2-container {
   z-index: 999999 !important;
 }
 
+.my-subcell[data-tooltip] {
+  position: relative;
+}
 
+.my-subcell[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%; /* affiche le tooltip au-dessus */
+  left: 50%;
+  transform: translateX(-50%);
+  background: #ffffffd3;
+  color: #000;
+  padding: 5px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s;
+  z-index: 1000;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.my-subcell[data-tooltip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (max-width: 1230px) {
+  .my-subcell {
+    font-size: 10px;
+  }
+}
 @media (max-width: 920px) {
   .my-extra-row {
     flex-wrap: wrap;
@@ -100,5 +126,9 @@
   }
   .my-subcell {
     width: 100%;
+    font-size: 8px;
   }
 }
+
+
+
