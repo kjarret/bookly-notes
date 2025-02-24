@@ -1,0 +1,31 @@
+name: Deploy Plugin to Infomaniak
+
+on:
+  push:
+    branches:
+      - dev  # Déclenche l'action quand on push sur main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh/
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H as1nk.ftp.infomaniak.com >> ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/id_rsa  # ✅ Fixe l'erreur "error in libcrypto"
+
+      - name: Test SSH Connection
+        run: |
+          ssh -v as1nk_kenny@as1nk.ftp.infomaniak.com "echo 'Connexion réussie'"
+
+      - name: Deploy via SCP
+        run: |
+          scp -r * as1nk_kenny@as1nk.ftp.infomaniak.com:/home/clients/abe67aa3830ea705892a81842123b09c/dev/dev.analyse-posturale.com/wp-content/plugins/bookly-notes/

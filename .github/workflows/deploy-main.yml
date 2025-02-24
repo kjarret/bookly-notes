@@ -28,4 +28,4 @@ jobs:
 
       - name: Deploy via SCP
         run: |
-          scp -r * as1nk_kenny@as1nk.ftp.infomaniak.com:/home/clients/abe67aa3830ea705892a81842123b09c/dev/dev.analyse-posturale.com/wp-content/plugins/bookly-notes/
+          scp -r * as1nk_kenny@as1nk.ftp.infomaniak.com:/home/clients/abe67aa3830ea705892a81842123b09c/clients/analyse-posturale.com/wp-content/plugins/bookly-notes/
