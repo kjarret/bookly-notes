@@ -1,4 +1,4 @@
-name: Deploy Plugin to Infomaniak
+name: MAIN / Deploy bookly-notes plugin to Infomaniak
 
 on:
   push:

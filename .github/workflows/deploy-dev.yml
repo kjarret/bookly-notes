@@ -1,9 +1,9 @@
-name: Deploy Plugin to Infomaniak
+name: DEV / Deploy bookly-notes plugin to Infomaniak
 
 on:
   push:
     branches:
-      - dev  # Déclenche l'action quand on push sur main
+      - dev  # Déclenche l'action quand on push sur dev
 
 jobs:
   deploy:
