@@ -1,0 +1,103 @@
+/* bookly-notes.css */
+
+/* Modal */
+.my-modal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5);
+  z-index: 9999;
+}
+.my-modal-content {
+  background: #fff;
+  width: 400px;
+  padding: 20px;
+  margin: 100px auto;
+  border-radius: 4px;
+  position: relative;
+}
+.my-modal-close {
+  position: absolute;
+  top: 5px; right: 10px;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+/* Sous-cellules et extra-row */
+.my-extra-row {
+  display: flex;
+  justify-content: space-evenly;
+  gap: 8px;
+  margin-top: 10px;
+  border: 1px solid #999;
+  padding: 5px;
+  background: #f9f9f9;
+}
+
+.my-subcell {
+  cursor: pointer;
+  border: 1px dashed #ccc;
+  padding: 5px;
+  min-width: 20px;
+  text-align: center;
+  font-size: 12px;
+  width: 33%;
+  display: flex;
+  flex-direction: row;
+  align-content: center;
+  align-items: center;
+  justify-content: space-around;
+  font-weight: 700;
+  flex-wrap: wrap;
+}
+
+.my-subcell:hover {
+  background: #E6E6E6;
+}
+.my-subcell:last-child {
+  margin-bottom: 0;
+}
+
+/* Boutons dans le modal */
+.button-champ {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}
+.modal-button {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 5px;
+  border: 1px solid #8D8F94;
+  font-weight: 600;
+  color: white;
+}
+#myModalSaveBtn {
+  background-color: #027BFF;
+}
+#myModalDeleteBtn {
+  background-color: rgb(183, 41, 20);
+}
+
+.svg-circle {
+  fill: red;
+  background-color: red;
+}
+
+.my-modal .select2-container {
+  z-index: 999999 !important;
+}
+
+
+@media (max-width: 920px) {
+  .my-extra-row {
+    flex-wrap: wrap;
+    flex-direction: column;
+  }
+  .my-subcell {
+    width: 100%;
+  }
+}
