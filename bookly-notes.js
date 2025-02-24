@@ -305,7 +305,7 @@ jQuery(document).ready(function($){
           let shortLoc = locName.substring(0,3).toUpperCase();
           let hasNote  = content.trim().length > 0;
           let newHtml  = shortLoc + (hasNote ? " " + plusIcon : "");
-          $subcell.html(newHtml || "+");
+          $subcell.html(newHtml || addNoteIcon);
           if (location_id) {
             let color = locationColors[location_id] || "#DDD";
             $subcell.css("background-color", color);
@@ -352,7 +352,7 @@ jQuery(document).ready(function($){
           $modal.hide();
           const $dayCell = $(`.ec-day[role="columnheader"].cells-initialized:has(time[datetime='${currentDayId}'])`);
           const $subcell = $dayCell.find(`.my-subcell[data-subcell='${currentSubcell}']`);
-          $subcell.html("+").css("background-color", "");
+          $subcell.html(addNoteIcon).css("background-color", "");
           $subcell.removeAttr('data-tooltip');
           console.log("[Bookly+Notes] Sous-cellule réinitialisée après suppression.");
         } else {
