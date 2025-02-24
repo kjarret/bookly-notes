@@ -19,6 +19,12 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H as1nk.ftp.infomaniak.com >> ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/id_rsa  # ✅ Fixe l'erreur "error in libcrypto"
+
+      - name: Test SSH Connection
+        run: |
+          ssh -v as1nk_kenny@as1nk.ftp.infomaniak.com "echo 'Connexion réussie'"
 
       - name: Deploy via SCP
         run: |
