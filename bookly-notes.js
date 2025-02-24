@@ -16,7 +16,6 @@ jQuery(document).ready(function($){
     '14': '#F39C12',   // Nyon
     '15': '#C0392B'    // Montreux
   };
-  
 
   // 2) SVG plusIcon pour indiquer qu'une note existe
   const plusIcon = `
@@ -89,12 +88,14 @@ jQuery(document).ready(function($){
   const $modalLocDropdown = $('#myModalLocationDropdown');
   const $modalSaveBtn     = $('#myModalSaveBtn');
   const $modalDeleteBtn   = $('#myModalDeleteBtn');
-
+  const addNoteIcon = `
+    <svg width="12" height="12" xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" viewBox="0,0,256,256" style="margin-top:6px;margin-bottom:6px;">
+      <g fill="#000000" fill-rule="evenodd" stroke="none" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal"><g transform="scale(10.66667,10.66667)"><path d="M11,2v9h-9v2h9v9h2v-9h9v-2h-9v-9z"></path></g></g>
+    </svg>`;
 
   let currentDayId   = null;
   let currentSubcell = null;
 
-  // Code SVG du spinner
   const subcellSpinner = `
     <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <style>
@@ -105,20 +106,29 @@ jQuery(document).ready(function($){
     </svg>
   `;
 
-  // Observer : surveille <time> pour détecter les changements
+  /****************************************
+   * Fonction observeHeaderCell($dayCell)
+   ****************************************/
   function observeHeaderCell($dayCell) {
     const timeEl = $dayCell.find('time[datetime], time[aria-label]').get(0);
-    if (!timeEl) return;
+    if (!timeEl) {
+      console.warn("[Bookly+Notes] Aucun <time> trouvé dans", $dayCell);
+      return;
+    }
     const observer = new MutationObserver(function(mutations) {
+      console.log("[Bookly+Notes] Mutation détectée dans <time>, mise à jour de la cellule.", $dayCell);
       $dayCell.removeClass('cells-initialized').find('.my-extra-row').remove();
       addThreeSubcellsTo($dayCell);
       observer.disconnect();
     });
     observer.observe(timeEl, { characterData: true, childList: true, subtree: true });
-    console.log("[Bookly+Notes] Observer attaché à", $dayCell);
+    console.log("[Bookly+Notes] Observer attaché à la cellule:", $dayCell);
   }
-
-  // Injection des sous-cellules dans une cellule donnée
+  
+  /****************************************
+   * Fonction addThreeSubcellsTo($dayCell)
+   * Injection des sous-cellules dans une cellule d'en‑tête
+   ****************************************/
   function addThreeSubcellsTo($dayCell) {
     $dayCell.find('.my-extra-row').remove();
     $dayCell.removeClass('cells-initialized');
@@ -143,6 +153,7 @@ jQuery(document).ready(function($){
     `);
     console.log("[Bookly+Notes] Sous-cellules injectées pour dayId =", dayId);
 
+    // Pour chaque sous-cellule, GET la note et afficher son contenu avec tooltip via CSS
     for (let sc = 1; sc <= 3; sc++) {
       const $subcell = $dayCell.find(`.my-subcell[data-subcell='${sc}']`);
       const combinedId = dayId + "-" + sc;
@@ -163,8 +174,12 @@ jQuery(document).ready(function($){
             let content   = shortLoc;
             if (hasNote) {
               content += " " + plusIcon;
+              // Ajoute le contenu de la note dans data-tooltip pour le CSS
+              $subcell.attr('data-tooltip', note);
+            } else {
+              $subcell.removeAttr('data-tooltip');
             }
-            $subcell.html(content || `<span style="color:#000">+</span>`);
+            $subcell.html(content || addNoteIcon);
             if (locationId) {
               let color = locationColors[locationId] || "#DDD";
               $subcell.css("background-color", color);
@@ -174,18 +189,19 @@ jQuery(document).ready(function($){
             console.log(`[Bookly+Notes] GET OK: combinedId = '${combinedId}', note = '${note}', location_id = ${resp.data.location_id}`);
           } else {
             console.warn("[Bookly+Notes] GET ERROR: combinedId =", combinedId, resp.data.message);
-            $subcell.text("+");
+            $subcell.text(addNoteIcon);
           }
         },
         error: function(err){
           console.error("[Bookly+Notes] GET AJAX error for combinedId =", combinedId, err);
-          $subcell.text("+");
+          $subcell.text(addNoteIcon);
         }
       });
     }
 
     observeHeaderCell($dayCell);
 
+    // Clic sur une sous-cellule : ouvre le modal pour modifier la note et sélectionner la location
     $dayCell.find('.my-subcell').on('click', function(){
       currentDayId   = dayId;
       currentSubcell = $(this).attr('data-subcell');
@@ -217,6 +233,7 @@ jQuery(document).ready(function($){
               $modalLocDropdown.val(savedLocId);
               console.log("[Bookly+Notes] Location pré-sélectionnée :", savedLocId);
             }
+            // Initialisation de Select2 pour le dropdown avec affichage du SVG couleur
             $modalLocDropdown.select2({
               width: 'resolve',
               dropdownParent: $modal,
@@ -246,7 +263,12 @@ jQuery(document).ready(function($){
               },
               escapeMarkup: function(markup) { return markup; }
             });
+          } else {
+            console.warn("[Bookly+Notes] GET (modal) ERROR:", resp.data.message);
           }
+        },
+        error: function(err) {
+          console.error("[Bookly+Notes] GET (modal) AJAX error:", err);
         }
       });
     });
@@ -283,12 +305,18 @@ jQuery(document).ready(function($){
           let shortLoc = locName.substring(0,3).toUpperCase();
           let hasNote  = content.trim().length > 0;
           let newHtml  = shortLoc + (hasNote ? " " + plusIcon : "");
-          $subcell.html(newHtml || "+");
+          $subcell.html(newHtml || addNoteIcon);
           if (location_id) {
             let color = locationColors[location_id] || "#DDD";
             $subcell.css("background-color", color);
           } else {
             $subcell.css("background-color", "");
+          }
+          // Mise à jour du tooltip avec le contenu de la note
+          if (hasNote) {
+            $subcell.attr('data-tooltip', content);
+          } else {
+            $subcell.removeAttr('data-tooltip');
           }
           console.log("[Bookly+Notes] Sous-cellule mise à jour avec le contenu :", content);
         } else {
@@ -324,10 +352,8 @@ jQuery(document).ready(function($){
           $modal.hide();
           const $dayCell = $(`.ec-day[role="columnheader"].cells-initialized:has(time[datetime='${currentDayId}'])`);
           const $subcell = $dayCell.find(`.my-subcell[data-subcell='${currentSubcell}']`);
-
-          $subcell.html("+");
-
-          $subcell.css("background-color", "");
+          $subcell.html(addNoteIcon).css("background-color", "");
+          $subcell.removeAttr('data-tooltip');
           console.log("[Bookly+Notes] Sous-cellule réinitialisée après suppression.");
         } else {
           alert("Erreur delete_note => " + resp.data.message);
@@ -349,7 +375,7 @@ jQuery(document).ready(function($){
     }, 500);
   });
 
-  // Initialisation via IntersectionObserver et fallback
+  // IntersectionObserver + fallback
   function initIntersectionObserver() {
     const observerOptions = { root: null, threshold: 0.1 };
     const intersectionObserver = new IntersectionObserver(function(entries, observer) {
@@ -358,12 +384,14 @@ jQuery(document).ready(function($){
           const $cell = $(entry.target);
           addThreeSubcellsTo($cell);
           observer.unobserve(entry.target);
+          console.log("[Bookly+Notes] Unobserve cette cellule :", entry.target);
         }
       });
     }, observerOptions);
 
     $('.ec-day[role="columnheader"]').each(function() {
       if (!$(this).hasClass('cells-initialized')) {
+        console.log("[Bookly+Notes] Observer: observation de la cellule", this);
         intersectionObserver.observe(this);
       }
     });
@@ -381,6 +409,21 @@ jQuery(document).ready(function($){
         addThreeSubcells();
       }, 500);
     };
+  } else {
+    $(document).on('bookly_calendar_view_changed', function(){
+      $('.ec-day[role="columnheader"]').each(function(){
+        $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
+      });
+      addThreeSubcells();
+    });
+  }
+
+  // Fonction d'injection sur toutes les cellules non initialisées
+  function addThreeSubcells() {
+    console.log("[Bookly+Notes] addThreeSubcells() appelé.");
+    $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function() {
+      addThreeSubcellsTo($(this));
+    });
   }
 
   // Lancement initial
