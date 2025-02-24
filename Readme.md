@@ -11,3 +11,4 @@
 ## 🚀 Déploiement Automatique
 Ce plugin est automatiquement déployé sur **Infomaniak** via **GitHub Actions**.
 
+Author : Sköpe 🚀
