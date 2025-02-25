@@ -2,17 +2,17 @@ jQuery(document).ready(function($){
   // Dictionnaires pour locations et équipe
   let locationDict = {};
   const locationColors = {
-    '5':  '#E74C3C',
-    '6':  '#27AE60',
-    '7':  '#2980B9',
-    '8':  '#8E44AD',
-    '9':  '#F1C40F',
-    '10': '#16A085',
-    '11': '#D35400',
-    '12': '#565b61',
-    '13': '#7F8C8D',
-    '14': '#F39C12',
-    '15': '#C0392B'
+    '5':  '#2980B9',   // Esch-sur-alzette
+    '6':  '#5DADE2',   // Luxembourg
+    '7':  '#2471A3',   // Kirchberg
+    '8':  '#F1948A',   // Chatel
+    '9':  '#E91E63',   // Arlon
+    '10': '#F8BBD0',   // Beauraing
+    '11': '#F4D03F',   // Genève CA
+    '12': '#F7DC6F',   // Genève EV
+    '13': '#27AE60',   // Genève Lausanne
+    '14': '#2ECC71',   // Nyon
+    '15': '#1E8449'    // Montreux
   };
 
   let teamDict = {};
@@ -397,7 +397,7 @@ jQuery(document).ready(function($){
     });
   });
 
-  $('.ec-prev, .ec-next').on('click', function(){
+  $('.ec-prev, .ec-next, #bookly-calendar-refresh').on('click', function(){
     setTimeout(function(){
       $('.ec-day[role="columnheader"]').each(function(){
         $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
@@ -405,6 +405,7 @@ jQuery(document).ready(function($){
       addThreeSubcells();
     }, 500);
   });
+
 
   function initIntersectionObserver() {
     const observerOptions = { root: null, threshold: 0.1 };
