@@ -24,6 +24,7 @@ function bookly_notes_create_table() {
       day_id VARCHAR(100) NOT NULL,
       note TEXT NOT NULL,
       location_id BIGINT(20) DEFAULT NULL,
+      team_member_id BIGINT(20) DEFAULT NULL,
       PRIMARY KEY (id),
       UNIQUE(day_id)
     ) $charset_collate;";
@@ -37,7 +38,6 @@ function bookly_notes_create_table() {
  */
 add_action( 'admin_enqueue_scripts', 'bookly_notes_admin_scripts' );
 function bookly_notes_admin_scripts( $hook ) {
-    // Vous pouvez filtrer selon la page (ex: 'toplevel_page_bookly-calendar')
     $plugin_url = plugin_dir_url( __FILE__ );
 
     wp_enqueue_style(
@@ -61,7 +61,7 @@ function bookly_notes_admin_scripts( $hook ) {
 }
 
 /**
- * AJAX GET : récupérer la note existante (note + location_id)
+ * AJAX GET : récupérer la note existante (note, location_id et team_member_id)
  */
 add_action( 'wp_ajax_bookly_get_note', 'bookly_get_note_callback' );
 function bookly_get_note_callback() {
@@ -74,23 +74,23 @@ function bookly_get_note_callback() {
     }
 
     $row = $wpdb->get_row(
-        $wpdb->prepare( "SELECT note, location_id FROM $table_name WHERE day_id = %s", $day_id ),
+        $wpdb->prepare( "SELECT note, location_id, team_member_id FROM $table_name WHERE day_id = %s", $day_id ),
         ARRAY_A
     );
 
     if ( $row === null ) {
-        // Pas d'erreur critique, on renvoie une note vide
-        wp_send_json_success( array( 'note' => '', 'location_id' => null ) );
+        wp_send_json_success( array( 'note' => '', 'location_id' => null, 'team_member_id' => null ) );
     } else {
         wp_send_json_success( array(
             'note' => $row['note'],
             'location_id' => $row['location_id'],
+            'team_member_id' => $row['team_member_id'],
         ) );
     }
 }
 
 /**
- * AJAX POST : sauvegarder / mettre à jour la note
+ * AJAX POST : sauvegarder / mettre à jour la note (incluant team_member_id)
  */
 add_action( 'wp_ajax_bookly_save_note', 'bookly_save_note_callback' );
 function bookly_save_note_callback() {
@@ -100,6 +100,7 @@ function bookly_save_note_callback() {
     $day_id = sanitize_text_field( $_POST['day_id'] ?? '' );
     $note   = sanitize_textarea_field( $_POST['note'] ?? '' );
     $location_id = ( isset( $_POST['location_id'] ) && $_POST['location_id'] !== '' ) ? intval( $_POST['location_id'] ) : null;
+    $team_member_id = ( isset( $_POST['team_member_id'] ) && $_POST['team_member_id'] !== '' ) ? intval( $_POST['team_member_id'] ) : null;
 
     if ( ! $day_id ) {
         wp_send_json_error( array( 'message' => 'Aucun day_id fourni' ) );
@@ -112,9 +113,13 @@ function bookly_save_note_callback() {
     if ( $exists ) {
         $res = $wpdb->update(
             $table_name,
-            array( 'note' => $note, 'location_id' => $location_id ),
+            array(
+                'note' => $note,
+                'location_id' => $location_id,
+                'team_member_id' => $team_member_id,
+            ),
             array( 'day_id' => $day_id ),
-            array( '%s', '%d' ),
+            array( '%s', '%d', '%d' ),
             array( '%s' )
         );
         if ( $res === false ) {
@@ -128,8 +133,9 @@ function bookly_save_note_callback() {
                 'day_id' => $day_id,
                 'note' => $note,
                 'location_id' => $location_id,
+                'team_member_id' => $team_member_id,
             ),
-            array( '%s', '%s', '%d' )
+            array( '%s', '%s', '%d', '%d' )
         );
         if ( $res === false ) {
             error_log( "[ERROR save_note] INSERT ERROR: " . $wpdb->last_error );
@@ -150,6 +156,18 @@ function bookly_get_locations_callback() {
 
     $rows = $wpdb->get_results( "SELECT id, name FROM $locations_table ORDER BY name", ARRAY_A );
     wp_send_json_success( array( 'locations' => $rows ) );
+}
+
+/**
+ * AJAX GET : récupérer la liste des membres d'équipe (staff) de Bookly
+ */
+add_action( 'wp_ajax_bookly_get_team_members', 'bookly_get_team_members_callback' );
+function bookly_get_team_members_callback() {
+    global $wpdb;
+    $staff_table = $wpdb->prefix . 'bookly_staff';
+
+    $rows = $wpdb->get_results( "SELECT id, full_name FROM $staff_table ORDER BY full_name", ARRAY_A );
+    wp_send_json_success( array( 'team_members' => $rows ) );
 }
 
 /**
@@ -181,8 +199,9 @@ function bookly_delete_note_callback() {
  * Enqueue des scripts externes pour Select2
  */
 function admin_enqueue_scripts_callback(){
-    wp_enqueue_style( 'select2-css', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0-rc.0' );
-    wp_enqueue_script( 'select2-js', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0-rc.0' );
-    wp_enqueue_script( 'select2-init', '/wp-content/plugins/select-2-tutorial/select2-init.js', array('jquery'), '4.1.0-rc.0' );
+    wp_enqueue_style( 'select2-css', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0-rc.0');
+    wp_enqueue_script( 'select2-js', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', 'jquery', '4.1.0-rc.0');
+    wp_enqueue_script( 'select2-init', '/wp-content/plugins/select-2-tutorial/select2-init.js', 'jquery', '4.1.0-rc.0');
 }
+
 add_action( 'admin_enqueue_scripts', 'admin_enqueue_scripts_callback' );
