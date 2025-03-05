@@ -1,5 +1,5 @@
 jQuery(document).ready(function($){
-  // Dictionnaires pour les locations et thérapeute
+  // Mapping des noms et couleurs par ID de location
   let locationDict = {};
   const locationColors = {
     '5':  '#2980B9',   // Esch-sur-alzette
@@ -15,6 +15,7 @@ jQuery(document).ready(function($){
     '15': '#1E8449'    // Montreux
   };
 
+  // Dictionnaire pour les membres d'équipe (sera rempli via AJAX et stocké dans window.teamDict)
   let teamDict = {};
 
   // SVGs
@@ -42,7 +43,7 @@ jQuery(document).ready(function($){
     </svg>
   `;
 
-  // Création du modal (incluant les dropdowns pour location et Thérapeute)
+  // Création du modal (s'il n'existe pas déjà)
   if (!$('#myModal').length) {
     $('body').append(`
       <div id="myModal" class="my-modal">
@@ -53,12 +54,12 @@ jQuery(document).ready(function($){
           <br/><br/>
           <label>Cabinet : </label>
           <select id="myModalLocationDropdown" style="width:100%;">
-            <option value="">(Aucune)</option>
+            <option value="">(Aucun)</option>
           </select>
           <br/><br/>
           <label>Thérapeute : </label>
           <select id="myModalTeamDropdown" style="width:100%;">
-            <option value="">(Aucune)</option>
+            <option value="">(Aucun)</option>
           </select>
           <br/><br/>
           <div class="button-champ">
@@ -85,6 +86,25 @@ jQuery(document).ready(function($){
   let currentDayId = null,
       currentSubcell = null;
 
+  // Fonction pour ajuster la largeur des sous-cellules en fonction du cookie staff (si défini)
+  /* function adjustSubcellWidths() {
+    let booklyCalTabId = $.cookie('bookly_cal_tab_id');
+    if (booklyCalTabId && booklyCalTabId >= 2 && booklyCalTabId <= 4) {
+      let mainIndex = booklyCalTabId - 2; // Pour 2 → 0, 3 → 1, 4 → 2
+      $(".my-extra-row").each(function(){
+        $(this).children().each(function(index){
+          if (index === mainIndex) {
+            $(this).css("width", "70%");
+          } else {
+            $(this).css("width", "15%");
+          }
+        });
+      });
+    } else {
+      $(".my-extra-row").children().css("width", "33.33%");
+    }
+  } */
+
   // Récupère la liste des locations et remplit locationDict
   function fetchAllLocations() {
     return $.ajax({
@@ -105,7 +125,7 @@ jQuery(document).ready(function($){
     });
   }
 
-  // Récupère la liste des membres staff et stocke dans teamDict (également accessible via window.teamDict)
+  // Récupère la liste des membres d'équipe et remplit teamDict
   function fetchAllTeamMembers() {
     return $.ajax({
       url: BooklyNotesAjax.ajax_url,
@@ -114,9 +134,12 @@ jQuery(document).ready(function($){
       dataType: 'json'
     }).done(function(resp){
       if (resp.success) {
+        let options = `<option value="">(Aucun)</option>`;
         (resp.data.team_members || []).forEach(member => {
           teamDict[member.id] = member.full_name;
+          options += `<option value="${member.id}">${member.full_name}</option>`;
         });
+        $modalTeamDropdown.html(options);
         window.teamDict = teamDict;
       } else {
         console.error("[Bookly+Notes] fetchAllTeamMembers error:", resp.data);
@@ -126,7 +149,7 @@ jQuery(document).ready(function($){
     });
   }
 
-  // Fonction d'observation d'une cellule d'en‑tête
+  // Fonction d'observation sur le <time> dans une cellule d'en‑tête
   function observeHeaderCell($dayCell) {
     const timeEl = $dayCell.find('time[datetime], time[aria-label]').get(0);
     if (!timeEl) {
@@ -141,7 +164,7 @@ jQuery(document).ready(function($){
     observer.observe(timeEl, { characterData: true, childList: true, subtree: true });
   }
 
-  // Injection des sous-cellules dans une cellule d'en‑tête
+  // Injection et mise à jour des sous-cellules dans une cellule d'en‑tête
   function addThreeSubcellsTo($dayCell) {
     $dayCell.find('.my-extra-row').remove();
     $dayCell.removeClass('cells-initialized');
@@ -162,7 +185,7 @@ jQuery(document).ready(function($){
       </div>
     `);
 
-    // Pour chaque sous-cellule, récupère la note et met à jour l'affichage
+    // Pour chaque sous-cellule, récupération de la note et du staff
     for (let sc = 1; sc <= 3; sc++) {
       const $subcell = $dayCell.find(`.my-subcell[data-subcell='${sc}']`);
       const combinedId = dayId + "-" + sc;
@@ -194,7 +217,7 @@ jQuery(document).ready(function($){
             } else {
               $subcell.removeAttr('data-tooltip');
             }
-            // Ajoute le nom du staff en dessous du shortLoc si défini
+            // Ajoute le nom du staff en dessous du shortLoc s'il est défini
             if (teamName) {
               content += "<br><span class='staff-label'>" + teamName + "</span>";
             }
@@ -217,14 +240,16 @@ jQuery(document).ready(function($){
 
     observeHeaderCell($dayCell);
 
-    // Au clic sur une sous-cellule, ouvre le modal pour modifier la note
+    // Au clic sur une sous-cellule, ouvre le modal pour modification
     $dayCell.find('.my-subcell').on('click', function(){
       currentDayId = dayId;
       currentSubcell = $(this).attr('data-subcell');
       $modalTitle.text("Jour " + dayId + " / Sous-cell " + currentSubcell);
       $modalTextarea.val("");
-      $modalLocDropdown.empty().append('<option value="">(Aucune)</option>');
-      $modalTeamDropdown.empty().append('<option value="">(Aucune)</option>');
+      $modalLocDropdown.empty();
+      $modalTeamDropdown.empty();
+      // Ici, on ne rajoute pas (Aucun) car il est déjà présent dans le HTML du modal
+
       $modal.show();
       const combinedId = dayId + "-" + currentSubcell;
       $.ajax({
@@ -237,12 +262,13 @@ jQuery(document).ready(function($){
             $modalTextarea.val(resp.data.note || "");
             const savedLocId = resp.data.location_id || "";
             const savedTeamId = resp.data.team_member_id || "";
-            // Remplit le dropdown des locations
+            $modalLocDropdown.append(`<option value="">(Aucun)</option>`);
+            // Remplit le dropdown des locations (sans rajouter un doublon de l'option "(Aucun)" déjà présente)
             let locOptions = Object.keys(locationDict).map(id => {
               let color = locationColors[id] || "#000000";
               return `<option value="${id}" data-color="${color}">${locationDict[id]}</option>`;
             });
-            $modalLocDropdown.append('<option value="">(Aucune)</option>' + locOptions.join(""));
+            $modalLocDropdown.append(locOptions.join(""));
             if (savedLocId) {
               $modalLocDropdown.val(savedLocId);
             }
@@ -275,44 +301,20 @@ jQuery(document).ready(function($){
               },
               escapeMarkup: function(markup) { return markup; }
             });
-            // Remplit le dropdown des membres staff
-            $.ajax({
-              url: BooklyNotesAjax.ajax_url,
-              method: 'GET',
-              data: { action: 'bookly_get_team_members' },
-              dataType: 'json',
-              success: function(respTeam) {
-                if (respTeam.success) {
-                  let teamOptions = `<option value="">(Aucune)</option>`;
-                  (respTeam.data.team_members || []).forEach(member => {
-                    teamOptions += `<option value="${member.id}">${member.full_name}</option>`;
-                  });
-                  $modalTeamDropdown.html(teamOptions);
-                  // Si un thérapeute est déjà sauvegardée, on la sélectionne
-                  if (savedTeamId) {
-                    $modalTeamDropdown.val(savedTeamId);
-                  } else {
-                    // Sinon, on définit une valeur par défaut en fonction du numéro de sous-cellule
-                    // Mapping : sous-cellule 1 -> staff id 2, 2 -> staff id 3, 3 -> staff id 4
-                    if (currentSubcell === "1") {
-                      $modalTeamDropdown.val("2");
-                    } else if (currentSubcell === "2") {
-                      $modalTeamDropdown.val("3");
-                    } else if (currentSubcell === "3") {
-                      $modalTeamDropdown.val("4");
-                    }
-                  }
-                  // Met à jour window.teamDict pour usage ultérieur
-                  window.teamDict = {};
-                  (respTeam.data.team_members || []).forEach(member => {
-                    window.teamDict[member.id] = member.full_name;
-                  });
-                } else {
-                  console.error("[Bookly+Notes] GET team_members error:", respTeam.data);
+            // Récupère les membres d'équipe et pré-remplit le dropdown par défaut
+            fetchAllTeamMembers().done(function(){
+              if (!savedTeamId) {
+                let defaultTeamId = "";
+                if (currentSubcell === "1") {
+                  defaultTeamId = "2";
+                } else if (currentSubcell === "2") {
+                  defaultTeamId = "3";
+                } else if (currentSubcell === "3") {
+                  defaultTeamId = "4";
                 }
-              },
-              error: function(err) {
-                console.error("[Bookly+Notes] GET team_members AJAX error:", err);
+                $modalTeamDropdown.val(defaultTeamId);
+              } else {
+                $modalTeamDropdown.val(savedTeamId);
               }
             });
           } else {
@@ -326,6 +328,7 @@ jQuery(document).ready(function($){
     });
   }
 
+  // Bouton Enregistrer
   $modalSaveBtn.on('click', function(){
     if (!currentDayId || !currentSubcell) {
       alert("Erreur : dayId / sous-cellule manquant");
@@ -371,6 +374,7 @@ jQuery(document).ready(function($){
           } else {
             $subcell.removeAttr('data-tooltip');
           }
+          // adjustSubcellWidths();
         } else {
           alert("Erreur save_note => " + resp.data.message);
         }
@@ -381,6 +385,7 @@ jQuery(document).ready(function($){
     });
   });
 
+  // Bouton Supprimer
   $modalDeleteBtn.on('click', function(){
     if (!currentDayId || !currentSubcell) {
       alert("Erreur : dayId / sous-cellule manquant");
@@ -403,6 +408,7 @@ jQuery(document).ready(function($){
           const $subcell = $dayCell.find(`.my-subcell[data-subcell='${currentSubcell}']`);
           $subcell.html(addNoteIcon).css("background-color", "");
           $subcell.removeAttr('data-tooltip');
+          // adjustSubcellWidths();
         } else {
           alert("Erreur delete_note => " + resp.data.message);
         }
@@ -413,12 +419,14 @@ jQuery(document).ready(function($){
     });
   });
 
-  $('.ec-prev, .ec-next, #bookly-calendar-refresh').on('click', function(){
+  // Détection du changement de vue / semaine via les boutons de navigation (délégué)
+  $(document).on('click', '.ec-prev, .ec-next, #bookly-calendar-refresh, .ec-dayGridMonth, .ec-timeGridWeek, .ec-resourceTimeGridDay, .ec-grid, .ec-listWeek', function(){
     setTimeout(function(){
       $('.ec-day[role="columnheader"]').each(function(){
         $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
       });
       addThreeSubcells();
+      // adjustSubcellWidths();
     }, 500);
   });
 
@@ -440,7 +448,7 @@ jQuery(document).ready(function($){
     });
   }
 
-  // Hook sur calendar.refetchEvents() pour rafraîchir les notes lors d'un changement de semaine
+  // Hook sur calendar.refetchEvents() pour rafraîchir les sous-cellules lors d'un changement de vue
   if (typeof calendar !== 'undefined' && calendar.ec && typeof calendar.ec.refetchEvents === 'function') {
     let originalRefetch = calendar.ec.refetchEvents;
     calendar.ec.refetchEvents = function(){
@@ -450,6 +458,7 @@ jQuery(document).ready(function($){
           $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
         });
         addThreeSubcells();
+        // adjustSubcellWidths();
       }, 500);
     };
   } else {
@@ -458,6 +467,7 @@ jQuery(document).ready(function($){
         $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
       });
       addThreeSubcells();
+      // adjustSubcellWidths();
     });
   }
 
@@ -465,6 +475,7 @@ jQuery(document).ready(function($){
     $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function(){
       addThreeSubcellsTo($(this));
     });
+    // adjustSubcellWidths();
   }
 
   fetchAllLocations().done(function(){
@@ -474,6 +485,7 @@ jQuery(document).ready(function($){
         $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function(){
           addThreeSubcellsTo($(this));
         });
+        // adjustSubcellWidths();
       }, 2000);
     });
   });
