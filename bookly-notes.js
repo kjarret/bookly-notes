@@ -1,5 +1,5 @@
 jQuery(document).ready(function($){
-  // Dictionnaires pour locations et équipe
+  // Mapping des noms et couleurs par ID de location
   let locationDict = {};
   const locationColors = {
     '5':  '#2980B9',   // Esch-sur-alzette
@@ -15,9 +15,10 @@ jQuery(document).ready(function($){
     '15': '#1E8449'    // Montreux
   };
 
+  // Dictionnaire pour les membres d'équipe (sera rempli via AJAX et stocké dans window.teamDict)
   let teamDict = {};
 
-  // SVG pour indiquer qu'une note existe (plusIcon) et pour le bouton d'ajout (addNoteIcon)
+  // SVGs
   const plusIcon = `
     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 26 26" fill="#FFF" style="vertical-align: middle;">
       <path d="M13.5,3.188C7.805,3.188,3.188,7.805,3.188,13.5S7.805,23.813,13.5,23.813S23.813,19.195,23.813,13.5 S19.195,3.188,13.5,3.188z M19,15h-4v4h-3v-4H8v-3h4V8h3v4h4V15z"></path>
@@ -32,49 +33,17 @@ jQuery(document).ready(function($){
       </g>
     </svg>
   `;
+  const subcellSpinner = `
+    <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <style>
+        .spinner_P7sC { transform-origin: center; animation: spinner_svv2 .75s infinite linear; }
+        @keyframes spinner_svv2 { 100% { transform: rotate(360deg); } }
+      </style>
+      <path d="M10.14,1.16a11,11,0,0,0-9,8.92A1.59,1.59,0,0,0,2.46,12,1.52,1.52,0,0,0,4.11,10.7a8,8,0,0,1,6.66-6.61A1.42,1.42,0,0,0,12,2.69h0A1.57,1.57,0,0,0,10.14,1.16Z" class="spinner_P7sC"/>
+    </svg>
+  `;
 
-  // Récupère la liste des locations et remplit locationDict
-  function fetchAllLocations() {
-    return $.ajax({
-      url: BooklyNotesAjax.ajax_url,
-      method: 'GET',
-      data: { action: 'bookly_get_locations' },
-      dataType: 'json'
-    }).done(function(resp){
-      if (resp.success) {
-        (resp.data.locations || []).forEach(loc => {
-          locationDict[loc.id] = loc.name;
-        });
-      } else {
-        console.error("[Bookly+Notes] fetchAllLocations error:", resp.data);
-      }
-    }).fail(function(err){
-      console.error("[Bookly+Notes] fetchAllLocations AJAX fail:", err);
-    });
-  }
-
-  // Récupère la liste des membres d'équipe et stocke dans teamDict (également accessible via window.teamDict)
-  function fetchAllTeamMembers() {
-    return $.ajax({
-      url: BooklyNotesAjax.ajax_url,
-      method: 'GET',
-      data: { action: 'bookly_get_team_members' },
-      dataType: 'json'
-    }).done(function(resp){
-      if (resp.success) {
-        (resp.data.team_members || []).forEach(member => {
-          teamDict[member.id] = member.full_name;
-        });
-        window.teamDict = teamDict;
-      } else {
-        console.error("[Bookly+Notes] fetchAllTeamMembers error:", resp.data);
-      }
-    }).fail(function(err){
-      console.error("[Bookly+Notes] fetchAllTeamMembers AJAX fail:", err);
-    });
-  }
-
-  // Création du modal (incluant les dropdowns pour location et équipe)
+  // Création du modal (s'il n'existe pas déjà)
   if (!$('#myModal').length) {
     $('body').append(`
       <div id="myModal" class="my-modal">
@@ -85,12 +54,12 @@ jQuery(document).ready(function($){
           <br/><br/>
           <label>Cabinet : </label>
           <select id="myModalLocationDropdown" style="width:100%;">
-            <option value="">(Aucune)</option>
+            <option value="">(Aucun)</option>
           </select>
           <br/><br/>
-          <label>Équipe : </label>
+          <label>Thérapeute : </label>
           <select id="myModalTeamDropdown" style="width:100%;">
-            <option value="">(Aucune)</option>
+            <option value="">(Aucun)</option>
           </select>
           <br/><br/>
           <div class="button-champ">
@@ -117,16 +86,70 @@ jQuery(document).ready(function($){
   let currentDayId = null,
       currentSubcell = null;
 
-  const subcellSpinner = `
-    <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      <style>
-        .spinner_P7sC { transform-origin: center; animation: spinner_svv2 .75s infinite linear; }
-        @keyframes spinner_svv2 { 100% { transform: rotate(360deg); } }
-      </style>
-      <path d="M10.14,1.16a11,11,0,0,0-9,8.92A1.59,1.59,0,0,0,2.46,12,1.52,1.52,0,0,0,4.11,10.7a8,8,0,0,1,6.66-6.61A1.42,1.42,0,0,0,12,2.69h0A1.57,1.57,0,0,0,10.14,1.16Z" class="spinner_P7sC"/>
-    </svg>
-  `;
+  // Fonction pour ajuster la largeur des sous-cellules en fonction du cookie staff (si défini)
+  /* function adjustSubcellWidths() {
+    let booklyCalTabId = $.cookie('bookly_cal_tab_id');
+    if (booklyCalTabId && booklyCalTabId >= 2 && booklyCalTabId <= 4) {
+      let mainIndex = booklyCalTabId - 2; // Pour 2 → 0, 3 → 1, 4 → 2
+      $(".my-extra-row").each(function(){
+        $(this).children().each(function(index){
+          if (index === mainIndex) {
+            $(this).css("width", "70%");
+          } else {
+            $(this).css("width", "15%");
+          }
+        });
+      });
+    } else {
+      $(".my-extra-row").children().css("width", "33.33%");
+    }
+  } */
 
+  // Récupère la liste des locations et remplit locationDict
+  function fetchAllLocations() {
+    return $.ajax({
+      url: BooklyNotesAjax.ajax_url,
+      method: 'GET',
+      data: { action: 'bookly_get_locations' },
+      dataType: 'json'
+    }).done(function(resp){
+      if (resp.success) {
+        (resp.data.locations || []).forEach(loc => {
+          locationDict[loc.id] = loc.name;
+        });
+      } else {
+        console.error("[Bookly+Notes] fetchAllLocations error:", resp.data);
+      }
+    }).fail(function(err){
+      console.error("[Bookly+Notes] fetchAllLocations AJAX fail:", err);
+    });
+  }
+
+  // Récupère la liste des membres d'équipe et remplit teamDict
+  function fetchAllTeamMembers() {
+    return $.ajax({
+      url: BooklyNotesAjax.ajax_url,
+      method: 'GET',
+      data: { action: 'bookly_get_team_members' },
+      dataType: 'json'
+    }).done(function(resp){
+      if (resp.success) {
+        let options = `<option value="">(Aucun)</option>`;
+        (resp.data.team_members || []).forEach(member => {
+          teamDict[member.id] = member.full_name;
+          options += `<option value="${member.id}">${member.full_name}</option>`;
+        });
+        $modalTeamDropdown.html(options);
+        window.teamDict = teamDict;
+      } else {
+        console.error("[Bookly+Notes] fetchAllTeamMembers error:", resp.data);
+      }
+    }).fail(function(err){
+      console.error("[Bookly+Notes] fetchAllTeamMembers AJAX fail:", err);
+    });
+  }
+
+  // Fonction d'observation sur le <time> dans une cellule d'en‑tête
   function observeHeaderCell($dayCell) {
     const timeEl = $dayCell.find('time[datetime], time[aria-label]').get(0);
     if (!timeEl) {
@@ -141,6 +164,7 @@ jQuery(document).ready(function($){
     observer.observe(timeEl, { characterData: true, childList: true, subtree: true });
   }
 
+  // Injection et mise à jour des sous-cellules dans une cellule d'en‑tête
   function addThreeSubcellsTo($dayCell) {
     $dayCell.find('.my-extra-row').remove();
     $dayCell.removeClass('cells-initialized');
@@ -161,6 +185,7 @@ jQuery(document).ready(function($){
       </div>
     `);
 
+    // Pour chaque sous-cellule, récupération de la note et du staff
     for (let sc = 1; sc <= 3; sc++) {
       const $subcell = $dayCell.find(`.my-subcell[data-subcell='${sc}']`);
       const combinedId = dayId + "-" + sc;
@@ -192,9 +217,9 @@ jQuery(document).ready(function($){
             } else {
               $subcell.removeAttr('data-tooltip');
             }
-            // Ajout du nom du staff en dessous du shortLoc (si défini)
+            // Ajoute le nom du staff en dessous du shortLoc s'il est défini
             if (teamName) {
-              content += "<span class='staff-label'>" + teamName + "</span>";
+              content += "<br><span class='staff-label'>" + teamName + "</span>";
             }
             $subcell.html(content || addNoteIcon);
             if (locationId) {
@@ -215,13 +240,16 @@ jQuery(document).ready(function($){
 
     observeHeaderCell($dayCell);
 
+    // Au clic sur une sous-cellule, ouvre le modal pour modification
     $dayCell.find('.my-subcell').on('click', function(){
       currentDayId = dayId;
       currentSubcell = $(this).attr('data-subcell');
       $modalTitle.text("Jour " + dayId + " / Sous-cell " + currentSubcell);
       $modalTextarea.val("");
-      $modalLocDropdown.empty().append('<option value="">(Aucun)</option>');
-      $modalTeamDropdown.empty().append('<option value="">(Aucun)</option>');
+      $modalLocDropdown.empty();
+      $modalTeamDropdown.empty();
+      // Ici, on ne rajoute pas (Aucun) car il est déjà présent dans le HTML du modal
+
       $modal.show();
       const combinedId = dayId + "-" + currentSubcell;
       $.ajax({
@@ -234,6 +262,8 @@ jQuery(document).ready(function($){
             $modalTextarea.val(resp.data.note || "");
             const savedLocId = resp.data.location_id || "";
             const savedTeamId = resp.data.team_member_id || "";
+            $modalLocDropdown.append(`<option value="">(Aucun)</option>`);
+            // Remplit le dropdown des locations (sans rajouter un doublon de l'option "(Aucun)" déjà présente)
             let locOptions = Object.keys(locationDict).map(id => {
               let color = locationColors[id] || "#000000";
               return `<option value="${id}" data-color="${color}">${locationDict[id]}</option>`;
@@ -271,32 +301,20 @@ jQuery(document).ready(function($){
               },
               escapeMarkup: function(markup) { return markup; }
             });
-            // Récupère les membres d'équipe
-            $.ajax({
-              url: BooklyNotesAjax.ajax_url,
-              method: 'GET',
-              data: { action: 'bookly_get_team_members' },
-              dataType: 'json',
-              success: function(respTeam) {
-                if (respTeam.success) {
-                  let teamOptions = `<option value="">(Aucune)</option>`;
-                  (respTeam.data.team_members || []).forEach(member => {
-                    teamOptions += `<option value="${member.id}">${member.full_name}</option>`;
-                  });
-                  $modalTeamDropdown.html(teamOptions);
-                  if (savedTeamId) {
-                    $modalTeamDropdown.val(savedTeamId);
-                  }
-                  window.teamDict = {};
-                  (respTeam.data.team_members || []).forEach(member => {
-                    window.teamDict[member.id] = member.full_name;
-                  });
-                } else {
-                  console.error("[Bookly+Notes] GET team_members error:", respTeam.data);
+            // Récupère les membres d'équipe et pré-remplit le dropdown par défaut
+            fetchAllTeamMembers().done(function(){
+              if (!savedTeamId) {
+                let defaultTeamId = "";
+                if (currentSubcell === "1") {
+                  defaultTeamId = "2";
+                } else if (currentSubcell === "2") {
+                  defaultTeamId = "3";
+                } else if (currentSubcell === "3") {
+                  defaultTeamId = "4";
                 }
-              },
-              error: function(err) {
-                console.error("[Bookly+Notes] GET team_members AJAX error:", err);
+                $modalTeamDropdown.val(defaultTeamId);
+              } else {
+                $modalTeamDropdown.val(savedTeamId);
               }
             });
           } else {
@@ -310,6 +328,7 @@ jQuery(document).ready(function($){
     });
   }
 
+  // Bouton Enregistrer
   $modalSaveBtn.on('click', function(){
     if (!currentDayId || !currentSubcell) {
       alert("Erreur : dayId / sous-cellule manquant");
@@ -355,6 +374,7 @@ jQuery(document).ready(function($){
           } else {
             $subcell.removeAttr('data-tooltip');
           }
+          // adjustSubcellWidths();
         } else {
           alert("Erreur save_note => " + resp.data.message);
         }
@@ -365,6 +385,7 @@ jQuery(document).ready(function($){
     });
   });
 
+  // Bouton Supprimer
   $modalDeleteBtn.on('click', function(){
     if (!currentDayId || !currentSubcell) {
       alert("Erreur : dayId / sous-cellule manquant");
@@ -387,6 +408,7 @@ jQuery(document).ready(function($){
           const $subcell = $dayCell.find(`.my-subcell[data-subcell='${currentSubcell}']`);
           $subcell.html(addNoteIcon).css("background-color", "");
           $subcell.removeAttr('data-tooltip');
+          // adjustSubcellWidths();
         } else {
           alert("Erreur delete_note => " + resp.data.message);
         }
@@ -397,16 +419,18 @@ jQuery(document).ready(function($){
     });
   });
 
-  $('.ec-prev, .ec-next, #bookly-calendar-refresh').on('click', function(){
+  // Détection du changement de vue / semaine via les boutons de navigation (délégué)
+  $(document).on('click', '.ec-prev, .ec-next, #bookly-calendar-refresh, .ec-dayGridMonth, .ec-timeGridWeek, .ec-resourceTimeGridDay, .ec-grid, .ec-listWeek', function(){
     setTimeout(function(){
       $('.ec-day[role="columnheader"]').each(function(){
         $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
       });
       addThreeSubcells();
+      // adjustSubcellWidths();
     }, 500);
   });
 
-
+  // IntersectionObserver pour les cellules non initialisées
   function initIntersectionObserver() {
     const observerOptions = { root: null, threshold: 0.1 };
     const intersectionObserver = new IntersectionObserver((entries, observer) => {
@@ -424,6 +448,7 @@ jQuery(document).ready(function($){
     });
   }
 
+  // Hook sur calendar.refetchEvents() pour rafraîchir les sous-cellules lors d'un changement de vue
   if (typeof calendar !== 'undefined' && calendar.ec && typeof calendar.ec.refetchEvents === 'function') {
     let originalRefetch = calendar.ec.refetchEvents;
     calendar.ec.refetchEvents = function(){
@@ -433,6 +458,7 @@ jQuery(document).ready(function($){
           $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
         });
         addThreeSubcells();
+        // adjustSubcellWidths();
       }, 500);
     };
   } else {
@@ -441,6 +467,7 @@ jQuery(document).ready(function($){
         $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
       });
       addThreeSubcells();
+      // adjustSubcellWidths();
     });
   }
 
@@ -448,6 +475,7 @@ jQuery(document).ready(function($){
     $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function(){
       addThreeSubcellsTo($(this));
     });
+    // adjustSubcellWidths();
   }
 
   fetchAllLocations().done(function(){
@@ -457,6 +485,7 @@ jQuery(document).ready(function($){
         $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function(){
           addThreeSubcellsTo($(this));
         });
+        // adjustSubcellWidths();
       }, 2000);
     });
   });
