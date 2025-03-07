@@ -1,5 +1,5 @@
-jQuery(document).ready(function($){
-  // Mapping des noms et couleurs par ID de location
+jQuery(document).ready(async function($) {
+  // Dictionnaires pour les locations et l'équipe
   let locationDict = {};
   const locationColors = {
     '5':  '#2980B9',   // Esch-sur-alzette
@@ -15,7 +15,6 @@ jQuery(document).ready(function($){
     '15': '#1E8449'    // Montreux
   };
 
-  // Dictionnaire pour les membres d'équipe (sera rempli via AJAX et stocké dans window.teamDict)
   let teamDict = {};
 
   // SVGs
@@ -25,7 +24,7 @@ jQuery(document).ready(function($){
     </svg>
   `;
   const addNoteIcon = `
-    <svg width="12" height="12" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" style="margin-top:6px;margin-bottom:6px;">
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 256 256" style="margin-top:6px;margin-bottom:6px;">
       <g fill="#000" fill-rule="evenodd" stroke="none">
         <g transform="scale(10.66667,10.66667)">
           <path d="M11,2v9h-9v2h9v9h2v-9h9v-2h-9v-9z"></path>
@@ -34,7 +33,7 @@ jQuery(document).ready(function($){
     </svg>
   `;
   const subcellSpinner = `
-    <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
       <style>
         .spinner_P7sC { transform-origin: center; animation: spinner_svv2 .75s infinite linear; }
         @keyframes spinner_svv2 { 100% { transform: rotate(360deg); } }
@@ -43,7 +42,120 @@ jQuery(document).ready(function($){
     </svg>
   `;
 
-  // Création du modal (s'il n'existe pas déjà)
+  // Fonctions asynchrones pour charger les données 
+  async function fetchAllLocations() {
+    try {
+      const resp = await $.ajax({
+        url: BooklyNotesAjax.ajax_url,
+        method: 'GET',
+        data: { action: 'bookly_get_locations' },
+        dataType: 'json'
+      });
+      if (resp.success) {
+        (resp.data.locations || []).forEach(loc => {
+          locationDict[loc.id] = loc.name;
+        });
+      } else {
+        console.error("[Bookly+Notes] fetchAllLocations error:", resp.data);
+      }
+    } catch (err) {
+      console.error("[Bookly+Notes] fetchAllLocations AJAX fail:", err);
+    }
+  }
+
+  async function fetchAllTeamMembers() {
+    try {
+      const resp = await $.ajax({
+        url: BooklyNotesAjax.ajax_url,
+        method: 'GET',
+        data: { action: 'bookly_get_team_members' },
+        dataType: 'json'
+      });
+      if (resp.success) {
+        let options = `<option value="">(Aucun)</option>`;
+        (resp.data.team_members || []).forEach(member => {
+          teamDict[member.id] = member.full_name;
+          options += `<option value="${member.id}">${member.full_name}</option>`;
+        });
+        $('#myModalTeamDropdown').html(options);
+        window.teamDict = teamDict;
+      } else {
+        console.error("[Bookly+Notes] fetchAllTeamMembers error:", resp.data);
+      }
+    } catch (err) {
+      console.error("[Bookly+Notes] fetchAllTeamMembers AJAX fail:", err);
+    }
+  }
+
+  // Chargement en batch des notes 
+  async function batchLoadNotes() {
+    let combinedIds = [];
+    $('.my-subcell').each(function(){
+      let cid = $(this).data('combinedid');
+      if (cid && !$(this).data('loaded')) {
+        combinedIds.push(cid);
+      }
+    });
+    if (combinedIds.length === 0) return;
+    // Supprime les doublons
+    combinedIds = [...new Set(combinedIds)];
+    try {
+      // IMPORTANT : on envoie l'array directement (pas en chaîne)
+      const resp = await $.ajax({
+        url: BooklyNotesAjax.ajax_url,
+        method: 'GET',
+        data: { action: 'bookly_get_notes_batch', day_ids: combinedIds },
+        dataType: 'json'
+      });
+      if (resp.success) {
+        const notesData = resp.data.notes;
+        $('.my-subcell').each(function(){
+          let $cell = $(this);
+          let cid = $cell.data('combinedid');
+          if (notesData.hasOwnProperty(cid)) {
+            const data = notesData[cid];
+            const note = data.note || "";
+            const locationId = data.location_id || "";
+            const teamMemberId = data.team_member_id || "";
+            let locName = locationDict[locationId] || "";
+            let shortLoc = (locName === "Genève CA") ? "G_CA" :
+                           (locName === "Genève EV") ? "G_EV" :
+                           (locName ? locName.substring(0,3).toUpperCase() : "");
+            let teamName = (teamMemberId && window.teamDict) ? window.teamDict[teamMemberId] || "" : "";
+            let hasNote = note.trim().length > 0;
+            let content = shortLoc;
+            if (hasNote) {
+              content += " " + plusIcon;
+              $cell.attr('data-tooltip', note);
+            } else {
+              $cell.removeAttr('data-tooltip');
+            }
+            if (teamName) {
+              content += "<br><span class='staff-label'>" + teamName + "</span>";
+            }
+            // Si le contenu calculé est vide, on affiche addNoteIcon
+            $cell.html(content || addNoteIcon);
+            if (locationId) {
+              $cell.css("background-color", locationColors[locationId] || "#DDD");
+            } else {
+              $cell.css("background-color", "");
+            }
+            $cell.data('loaded', true);
+          } else {
+            // Marque la cellule comme chargée même si aucune note n'existe
+            $cell.html(addNoteIcon);
+            $cell.data('loaded', true);
+          }
+        });
+      } else {
+        console.error("[Bookly+Notes] Batch load error:", resp.data);
+      }
+    } catch (err) {
+      console.error("[Bookly+Notes] Batch AJAX error:", err);
+    }
+  }
+
+  // Création du modal si inexistant 
   if (!$('#myModal').length) {
     $('body').append(`
       <div id="myModal" class="my-modal">
@@ -86,70 +198,7 @@ jQuery(document).ready(function($){
   let currentDayId = null,
       currentSubcell = null;
 
-  // Fonction pour ajuster la largeur des sous-cellules en fonction du cookie staff (si défini)
-  /* function adjustSubcellWidths() {
-    let booklyCalTabId = $.cookie('bookly_cal_tab_id');
-    if (booklyCalTabId && booklyCalTabId >= 2 && booklyCalTabId <= 4) {
-      let mainIndex = booklyCalTabId - 2; // Pour 2 → 0, 3 → 1, 4 → 2
-      $(".my-extra-row").each(function(){
-        $(this).children().each(function(index){
-          if (index === mainIndex) {
-            $(this).css("width", "70%");
-          } else {
-            $(this).css("width", "15%");
-          }
-        });
-      });
-    } else {
-      $(".my-extra-row").children().css("width", "33.33%");
-    }
-  } */
-
-  // Récupère la liste des locations et remplit locationDict
-  function fetchAllLocations() {
-    return $.ajax({
-      url: BooklyNotesAjax.ajax_url,
-      method: 'GET',
-      data: { action: 'bookly_get_locations' },
-      dataType: 'json'
-    }).done(function(resp){
-      if (resp.success) {
-        (resp.data.locations || []).forEach(loc => {
-          locationDict[loc.id] = loc.name;
-        });
-      } else {
-        console.error("[Bookly+Notes] fetchAllLocations error:", resp.data);
-      }
-    }).fail(function(err){
-      console.error("[Bookly+Notes] fetchAllLocations AJAX fail:", err);
-    });
-  }
-
-  // Récupère la liste des membres d'équipe et remplit teamDict
-  function fetchAllTeamMembers() {
-    return $.ajax({
-      url: BooklyNotesAjax.ajax_url,
-      method: 'GET',
-      data: { action: 'bookly_get_team_members' },
-      dataType: 'json'
-    }).done(function(resp){
-      if (resp.success) {
-        let options = `<option value="">(Aucun)</option>`;
-        (resp.data.team_members || []).forEach(member => {
-          teamDict[member.id] = member.full_name;
-          options += `<option value="${member.id}">${member.full_name}</option>`;
-        });
-        $modalTeamDropdown.html(options);
-        window.teamDict = teamDict;
-      } else {
-        console.error("[Bookly+Notes] fetchAllTeamMembers error:", resp.data);
-      }
-    }).fail(function(err){
-      console.error("[Bookly+Notes] fetchAllTeamMembers AJAX fail:", err);
-    });
-  }
-
-  // Fonction d'observation sur le <time> dans une cellule d'en‑tête
+  //  Observation d'une cellule (sur le <time>) 
   function observeHeaderCell($dayCell) {
     const timeEl = $dayCell.find('time[datetime], time[aria-label]').get(0);
     if (!timeEl) {
@@ -164,11 +213,10 @@ jQuery(document).ready(function($){
     observer.observe(timeEl, { characterData: true, childList: true, subtree: true });
   }
 
-  // Injection et mise à jour des sous-cellules dans une cellule d'en‑tête
+  // Création des sous-cellules dans une cellule d'en‑tête 
   function addThreeSubcellsTo($dayCell) {
     $dayCell.find('.my-extra-row').remove();
     $dayCell.removeClass('cells-initialized');
-
     let dayId = "";
     const ariaLabel = $dayCell.find('time[aria-label]').attr('aria-label');
     if (ariaLabel) {
@@ -176,160 +224,132 @@ jQuery(document).ready(function($){
     } else {
       dayId = ($dayCell.find('time[datetime]').attr('datetime') || "").trim();
     }
+    $dayCell.data('day-id', dayId);
     $dayCell.addClass('cells-initialized');
     $dayCell.append(`
-      <div class="my-extra-row" style="display:flex; gap:8px; margin-top:10px;">
-        <div class="my-subcell" data-subcell="1">${subcellSpinner}</div>
-        <div class="my-subcell" data-subcell="2">${subcellSpinner}</div>
-        <div class="my-subcell" data-subcell="3">${subcellSpinner}</div>
+      <div class="my-extra-row" data-base-day="${dayId}" style="display:flex; gap:8px; margin-top:10px;">
+        <div class="my-subcell" data-subcell="1" data-combinedid="${dayId}-1">${subcellSpinner}</div>
+        <div class="my-subcell" data-subcell="2" data-combinedid="${dayId}-2">${subcellSpinner}</div>
+        <div class="my-subcell" data-subcell="3" data-combinedid="${dayId}-3">${subcellSpinner}</div>
       </div>
     `);
-
-    // Pour chaque sous-cellule, récupération de la note et du staff
-    for (let sc = 1; sc <= 3; sc++) {
-      const $subcell = $dayCell.find(`.my-subcell[data-subcell='${sc}']`);
-      const combinedId = dayId + "-" + sc;
-      $.ajax({
-        url: BooklyNotesAjax.ajax_url,
-        method: 'GET',
-        data: { action: 'bookly_get_note', day_id: combinedId },
-        dataType: 'json',
-        success: function(resp) {
-          if (resp.success) {
-            const note = resp.data.note || "";
-            const locationId = resp.data.location_id || "";
-            const teamMemberId = resp.data.team_member_id || "";
-            let locName = locationDict[locationId] || "";
-            let shortLoc = "";
-            if (locName === "Genève CA") {
-              shortLoc = "G_CA";
-            } else if (locName === "Genève EV") {
-              shortLoc = "G_EV";
-            } else {
-              shortLoc = locName.substring(0, 3).toUpperCase();
-            }
-            let teamName = (teamMemberId && window.teamDict) ? window.teamDict[teamMemberId] || "" : "";
-            let hasNote = note.trim().length > 0;
-            let content = shortLoc;
-            if (hasNote) {
-              content += plusIcon;
-              $subcell.attr('data-tooltip', note);
-            } else {
-              $subcell.removeAttr('data-tooltip');
-            }
-            // Ajoute le nom du staff en dessous du shortLoc s'il est défini
-            if (teamName) {
-              content += "<br><span class='staff-label'>" + teamName + "</span>";
-            }
-            $subcell.html(content || addNoteIcon);
-            if (locationId) {
-              $subcell.css("background-color", locationColors[locationId] || "#DDD");
-            } else {
-              $subcell.css("background-color", "");
-            }
-          } else {
-            $subcell.html(addNoteIcon);
-          }
-        },
-        error: function(err) {
-          console.error("[Bookly+Notes] GET AJAX error for combinedId =", combinedId, err);
-          $subcell.html(addNoteIcon);
-        }
-      });
-    }
-
     observeHeaderCell($dayCell);
-
-    // Au clic sur une sous-cellule, ouvre le modal pour modification
-    $dayCell.find('.my-subcell').on('click', function(){
-      currentDayId = dayId;
-      currentSubcell = $(this).attr('data-subcell');
-      $modalTitle.text("Jour " + dayId + " / Sous-cell " + currentSubcell);
-      $modalTextarea.val("");
-      $modalLocDropdown.empty();
-      $modalTeamDropdown.empty();
-      // Ici, on ne rajoute pas (Aucun) car il est déjà présent dans le HTML du modal
-
-      $modal.show();
-      const combinedId = dayId + "-" + currentSubcell;
-      $.ajax({
-        url: BooklyNotesAjax.ajax_url,
-        method: 'GET',
-        data: { action: 'bookly_get_note', day_id: combinedId },
-        dataType: 'json',
-        success: function(resp) {
-          if (resp.success) {
-            $modalTextarea.val(resp.data.note || "");
-            const savedLocId = resp.data.location_id || "";
-            const savedTeamId = resp.data.team_member_id || "";
-            $modalLocDropdown.append(`<option value="">(Aucun)</option>`);
-            // Remplit le dropdown des locations (sans rajouter un doublon de l'option "(Aucun)" déjà présente)
-            let locOptions = Object.keys(locationDict).map(id => {
-              let color = locationColors[id] || "#000000";
-              return `<option value="${id}" data-color="${color}">${locationDict[id]}</option>`;
-            });
-            $modalLocDropdown.append(locOptions.join(""));
-            if (savedLocId) {
-              $modalLocDropdown.val(savedLocId);
-            }
-            $modalLocDropdown.select2({
-              width: 'resolve',
-              dropdownParent: $modal,
-              templateResult: function(option) {
-                if (!option.id) return option.text;
-                let col = $(option.element).data('color') || '#000000';
-                return $(`
-                  <span>
-                    <svg width="12" height="12" style="vertical-align: middle; margin-right: 4px;">
-                      <circle cx="6" cy="6" r="5" fill="${col}" />
-                    </svg>
-                    ${option.text}
-                  </span>
-                `);
-              },
-              templateSelection: function(option) {
-                if (!option.id) return option.text;
-                let col = $(option.element).data('color') || '#000000';
-                return $(`
-                  <span>
-                    <svg width="12" height="12" style="vertical-align: middle; margin-right: 4px;">
-                      <circle cx="6" cy="6" r="5" fill="${col}" />
-                    </svg>
-                    ${option.text}
-                  </span>
-                `);
-              },
-              escapeMarkup: function(markup) { return markup; }
-            });
-            // Récupère les membres d'équipe et pré-remplit le dropdown par défaut
-            fetchAllTeamMembers().done(function(){
-              if (!savedTeamId) {
-                let defaultTeamId = "";
-                if (currentSubcell === "1") {
-                  defaultTeamId = "2";
-                } else if (currentSubcell === "2") {
-                  defaultTeamId = "3";
-                } else if (currentSubcell === "3") {
-                  defaultTeamId = "4";
-                }
-                $modalTeamDropdown.val(defaultTeamId);
-              } else {
-                $modalTeamDropdown.val(savedTeamId);
-              }
-            });
-          } else {
-            console.error("[Bookly+Notes] GET (modal) error:", resp.data.message);
-          }
-        },
-        error: function(err) {
-          console.error("[Bookly+Notes] GET (modal) AJAX error:", err);
-        }
-      });
-    });
   }
 
-  // Bouton Enregistrer
-  $modalSaveBtn.on('click', function(){
+  // Ajoute les sous-cellules pour toutes les cellules non initialisées et lance le chargement batch 
+  function addThreeSubcells() {
+    $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function(){
+      addThreeSubcellsTo($(this));
+    });
+    adjustSubcellWidths();
+    batchLoadNotes();
+  }
+
+  // Ajuste la largeur des sous-cellules selon le cookie "bookly_cal_tab_id" 
+  function adjustSubcellWidths() {
+    let booklyCalTabId = $.cookie('bookly_cal_tab_id');
+    if (booklyCalTabId && booklyCalTabId >= 2 && booklyCalTabId <= 4) {
+      let mainIndex = booklyCalTabId - 2;
+      $(".my-extra-row").each(function(){
+        $(this).children().each(function(index){
+          if (index === mainIndex) {
+            $(this).css("width", "70%");
+          } else {
+            $(this).css("width", "15%");
+          }
+        });
+      });
+    } else {
+      $(".my-extra-row").children().css("width", "33.33%");
+    }
+  }
+
+  // Gestion du clic sur une sous-cellule pour ouvrir le modal 
+  $(document).on('click', '.my-subcell', async function(){
+    currentDayId = $(this).closest('.my-extra-row').data('base-day');
+    currentSubcell = $(this).data('subcell');
+    $modalTitle.text("Jour " + currentDayId + " / Sous-cell " + currentSubcell);
+    $modalTextarea.val("");
+    $modalLocDropdown.empty();
+    $modalTeamDropdown.empty();
+    $modal.show();
+    const combinedId = currentDayId + "-" + currentSubcell;
+    try {
+      const resp = await $.ajax({
+        url: BooklyNotesAjax.ajax_url,
+        method: 'GET',
+        data: { action: 'bookly_get_note', day_id: combinedId },
+        dataType: 'json'
+      });
+      if (resp.success) {
+        $modalTextarea.val(resp.data.note || "");
+        const savedLocId = resp.data.location_id || "";
+        const savedTeamId = resp.data.team_member_id || "";
+        // Remplit le dropdown des locations sans doublon de l'option (Aucun)
+        $modalLocDropdown.append(`<option value="">(Aucun)</option>`);
+        let locOptions = Object.keys(locationDict).map(id => {
+          let color = locationColors[id] || "#000000";
+          return `<option value="${id}" data-color="${color}">${locationDict[id]}</option>`;
+        });
+        $modalLocDropdown.append(locOptions.join(""));
+        if (savedLocId) { $modalLocDropdown.val(savedLocId); }
+        $modalLocDropdown.select2({
+          width: 'resolve',
+          dropdownParent: $modal,
+          templateResult: function(option) {
+            if (!option.id) return option.text;
+            let col = $(option.element).data('color') || '#000000';
+            return $(`
+              <span>
+                <svg width="12" height="12" style="vertical-align: middle; margin-right: 4px;">
+                  <circle cx="6" cy="6" r="5" fill="${col}" />
+                </svg>
+                ${option.text}
+              </span>
+            `);
+          },
+          templateSelection: function(option) {
+            if (!option.id) return option.text;
+            let col = $(option.element).data('color') || '#000000';
+            return $(`
+              <span>
+                <svg width="12" height="12" style="vertical-align: middle; margin-right: 4px;">
+                  <circle cx="6" cy="6" r="5" fill="${col}" />
+                </svg>
+                ${option.text}
+              </span>
+            `);
+          },
+          escapeMarkup: function(markup) { return markup; }
+        });
+        // Remplit le dropdown des membres d'équipe
+        $modalTeamDropdown.append(`<option value="">(Aucun)</option>`);
+        await fetchAllTeamMembers();
+        // Pré-remplissage par défaut selon la sous-cellule
+        if (!savedTeamId) {
+          let subcellNum = parseInt(currentSubcell, 10);
+          let defaultTeamId = "";
+          if (subcellNum === 1) {
+            defaultTeamId = "2";
+          } else if (subcellNum === 2) {
+            defaultTeamId = "3";
+          } else if (subcellNum === 3) {
+            defaultTeamId = "4";
+          }
+          $modalTeamDropdown.val(defaultTeamId);
+        } else {
+          $modalTeamDropdown.val(savedTeamId);
+        }
+      } else {
+        console.error("[Bookly+Notes] GET (modal) error:", resp.data.message);
+      }
+    } catch (err) {
+      console.error("[Bookly+Notes] GET (modal) AJAX error:", err);
+    }
+  });
+
+  // Bouton Enregistrer 
+  $modalSaveBtn.on('click', async function(){
     if (!currentDayId || !currentSubcell) {
       alert("Erreur : dayId / sous-cellule manquant");
       return;
@@ -338,55 +358,54 @@ jQuery(document).ready(function($){
     const location_id = $modalLocDropdown.val() || "";
     const team_member_id = $modalTeamDropdown.val() || "";
     const combinedId = currentDayId + "-" + currentSubcell;
-    $.ajax({
-      url: BooklyNotesAjax.ajax_url,
-      method: 'POST',
-      data: {
-        action: 'bookly_save_note',
-        day_id: combinedId,
-        note: content,
-        location_id: location_id,
-        team_member_id: team_member_id
-      },
-      dataType: 'json',
-      success: function(resp) {
-        if (resp.success) {
-          alert("La note est sauvegardée !");
-          $modal.hide();
-          const $dayCell = $(`.ec-day[role="columnheader"].cells-initialized:has(time[datetime='${currentDayId}'])`);
-          const $subcell = $dayCell.find(`.my-subcell[data-subcell='${currentSubcell}']`);
-          let locName = locationDict[location_id] || "";
-          let shortLoc = (locName === "Genève CA") ? "G_CA" : ((locName === "Genève EV") ? "G_EV" : locName.substring(0, 3).toUpperCase());
-          let teamName = (team_member_id && window.teamDict) ? window.teamDict[team_member_id] || "" : "";
-          let hasNote = content.trim().length > 0;
-          let newHtml = shortLoc + (hasNote ? " " + plusIcon : "");
-          if (teamName) {
-            newHtml += "<br><span class='staff-label'>" + teamName + "</span>";
-          }
-          $subcell.html(newHtml || addNoteIcon);
-          if (location_id) {
-            $subcell.css("background-color", locationColors[location_id] || "#DDD");
-          } else {
-            $subcell.css("background-color", "");
-          }
-          if (hasNote) {
-            $subcell.attr('data-tooltip', content);
-          } else {
-            $subcell.removeAttr('data-tooltip');
-          }
-          // adjustSubcellWidths();
-        } else {
-          alert("Erreur save_note => " + resp.data.message);
+    try {
+      const resp = await $.ajax({
+        url: BooklyNotesAjax.ajax_url,
+        method: 'POST',
+        data: {
+          action: 'bookly_save_note',
+          day_id: combinedId,
+          note: content,
+          location_id: location_id,
+          team_member_id: team_member_id
+        },
+        dataType: 'json'
+      });
+      if (resp.success) {
+        alert("La note est sauvegardée !");
+        $modal.hide();
+        const $dayCell = $(`.ec-day[role="columnheader"].cells-initialized:has(time[datetime='${currentDayId}'])`);
+        const $subcell = $dayCell.find(`.my-subcell[data-subcell='${currentSubcell}']`);
+        let locName = locationDict[location_id] || "";
+        let shortLoc = (locName === "Genève CA") ? "G_CA" : ((locName === "Genève EV") ? "G_EV" : (locName ? locName.substring(0, 3).toUpperCase() : ""));
+        let teamName = (team_member_id && window.teamDict) ? window.teamDict[team_member_id] || "" : "";
+        let hasNote = content.trim().length > 0;
+        let newHtml = shortLoc + (hasNote ? " " + plusIcon : "");
+        if (teamName) {
+          newHtml += "<br><span class='staff-label'>" + teamName + "</span>";
         }
-      },
-      error: function(err) {
-        console.error("[Bookly+Notes] SAVE AJAX error:", err);
+        $subcell.html(newHtml || addNoteIcon);
+        if (location_id) {
+          $subcell.css("background-color", locationColors[location_id] || "#DDD");
+        } else {
+          $subcell.css("background-color", "");
+        }
+        if (hasNote) {
+          $subcell.attr('data-tooltip', content);
+        } else {
+          $subcell.removeAttr('data-tooltip');
+        }
+        adjustSubcellWidths();
+      } else {
+        alert("Erreur save_note => " + resp.data.message);
       }
-    });
+    } catch (err) {
+      console.error("[Bookly+Notes] SAVE AJAX error:", err);
+    }
   });
 
-  // Bouton Supprimer
-  $modalDeleteBtn.on('click', function(){
+  // Bouton Supprimer 
+  $modalDeleteBtn.on('click', async function(){
     if (!currentDayId || !currentSubcell) {
       alert("Erreur : dayId / sous-cellule manquant");
       return;
@@ -395,42 +414,47 @@ jQuery(document).ready(function($){
       return;
     }
     const combinedId = currentDayId + "-" + currentSubcell;
-    $.ajax({
-      url: BooklyNotesAjax.ajax_url,
-      method: 'POST',
-      data: { action: 'bookly_delete_note', day_id: combinedId },
-      dataType: 'json',
-      success: function(resp) {
-        if (resp.success) {
-          alert("Note supprimée !");
-          $modal.hide();
-          const $dayCell = $(`.ec-day[role="columnheader"].cells-initialized:has(time[datetime='${currentDayId}'])`);
-          const $subcell = $dayCell.find(`.my-subcell[data-subcell='${currentSubcell}']`);
-          $subcell.html(addNoteIcon).css("background-color", "");
-          $subcell.removeAttr('data-tooltip');
-          // adjustSubcellWidths();
-        } else {
-          alert("Erreur delete_note => " + resp.data.message);
-        }
-      },
-      error: function(err) {
-        console.error("[Bookly+Notes] DELETE AJAX error:", err);
+    try {
+      const resp = await $.ajax({
+        url: BooklyNotesAjax.ajax_url,
+        method: 'POST',
+        data: { action: 'bookly_delete_note', day_id: combinedId },
+        dataType: 'json'
+      });
+      if (resp.success) {
+        alert("Note supprimée !");
+        $modal.hide();
+        const $dayCell = $(`.ec-day[role="columnheader"].cells-initialized:has(time[datetime='${currentDayId}'])`);
+        const $subcell = $dayCell.find(`.my-subcell[data-subcell='${currentSubcell}']`);
+        $subcell.html(addNoteIcon).css("background-color", "");
+        $subcell.removeAttr('data-tooltip');
+        adjustSubcellWidths();
+      } else {
+        alert("Erreur delete_note => " + resp.data.message);
       }
-    });
+    } catch (err) {
+      console.error("[Bookly+Notes] DELETE AJAX error:", err);
+    }
   });
 
-  // Détection du changement de vue / semaine via les boutons de navigation (délégué)
-  $(document).on('click', '.ec-prev, .ec-next, #bookly-calendar-refresh, .ec-dayGridMonth, .ec-timeGridWeek, .ec-resourceTimeGridDay, .ec-grid, .ec-listWeek', function(){
+  // Détection des changements de vue / semaine via divers boutons 
+  $(document).on('click', '.ec-start, #bookly-calendar-refresh, .ec-dayGridMonth, .ec-timeGridWeek, .ec-resourceTimeGridDay, .ec-grid, .ec-listWeek', function(){
     setTimeout(function(){
       $('.ec-day[role="columnheader"]').each(function(){
         $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
       });
       addThreeSubcells();
-      // adjustSubcellWidths();
+      adjustSubcellWidths();
     }, 500);
   });
 
-  // IntersectionObserver pour les cellules non initialisées
+  $(document).on('click', '.nav-link', function(){
+    setTimeout(function(){
+      adjustSubcellWidths();
+    }, 500);
+  });
+
+  // IntersectionObserver pour les cellules non initialisées 
   function initIntersectionObserver() {
     const observerOptions = { root: null, threshold: 0.1 };
     const intersectionObserver = new IntersectionObserver((entries, observer) => {
@@ -448,7 +472,7 @@ jQuery(document).ready(function($){
     });
   }
 
-  // Hook sur calendar.refetchEvents() pour rafraîchir les sous-cellules lors d'un changement de vue
+  // Hook sur calendar.refetchEvents() pour rafraîchir les sous-cellules lors d'un changement de vue 
   if (typeof calendar !== 'undefined' && calendar.ec && typeof calendar.ec.refetchEvents === 'function') {
     let originalRefetch = calendar.ec.refetchEvents;
     calendar.ec.refetchEvents = function(){
@@ -458,7 +482,7 @@ jQuery(document).ready(function($){
           $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
         });
         addThreeSubcells();
-        // adjustSubcellWidths();
+        adjustSubcellWidths();
       }, 500);
     };
   } else {
@@ -467,7 +491,7 @@ jQuery(document).ready(function($){
         $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
       });
       addThreeSubcells();
-      // adjustSubcellWidths();
+      adjustSubcellWidths();
     });
   }
 
@@ -475,18 +499,19 @@ jQuery(document).ready(function($){
     $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function(){
       addThreeSubcellsTo($(this));
     });
-    // adjustSubcellWidths();
+    adjustSubcellWidths();
+    batchLoadNotes();
   }
 
-  fetchAllLocations().done(function(){
-    fetchAllTeamMembers().done(function(){
-      initIntersectionObserver();
-      setTimeout(function(){
-        $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function(){
-          addThreeSubcellsTo($(this));
-        });
-        // adjustSubcellWidths();
-      }, 2000);
+  // Lancement initial
+  await fetchAllLocations();
+  await fetchAllTeamMembers();
+  initIntersectionObserver();
+  setTimeout(function(){
+    $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function(){
+      addThreeSubcellsTo($(this));
     });
-  });
+    adjustSubcellWidths();
+    batchLoadNotes();
+  }, 2000);
 });

@@ -157,10 +157,7 @@
     flex-direction: column;
   }
   .my-subcell {
-    width: 100%;
+    width: 100% !important;
     font-size: 8px;
   }
 }
-
-
-
