@@ -42,7 +42,7 @@ jQuery(document).ready(async function($) {
     </svg>
   `;
 
-  // --- Fonctions asynchrones pour charger les données ---
+  // Fonctions asynchrones pour charger les données 
   async function fetchAllLocations() {
     try {
       const resp = await $.ajax({
@@ -87,8 +87,9 @@ jQuery(document).ready(async function($) {
     }
   }
 
-  // --- Chargement en batch des notes ---
+  // Chargement en batch des notes 
   async function batchLoadNotes() {
+    console.log("notes chargés");
     let combinedIds = [];
     $('.my-subcell').each(function(){
       let cid = $(this).data('combinedid');
@@ -97,8 +98,10 @@ jQuery(document).ready(async function($) {
       }
     });
     if (combinedIds.length === 0) return;
+    // Supprime les doublons
     combinedIds = [...new Set(combinedIds)];
     try {
+      // IMPORTANT : on envoie l'array directement (pas en chaîne)
       const resp = await $.ajax({
         url: BooklyNotesAjax.ajax_url,
         method: 'GET',
@@ -131,6 +134,7 @@ jQuery(document).ready(async function($) {
             if (teamName) {
               content += "<br><span class='staff-label'>" + teamName + "</span>";
             }
+            // Si le contenu calculé est vide, on affiche addNoteIcon
             $cell.html(content || addNoteIcon);
             if (locationId) {
               $cell.css("background-color", locationColors[locationId] || "#DDD");
@@ -139,6 +143,7 @@ jQuery(document).ready(async function($) {
             }
             $cell.data('loaded', true);
           } else {
+            // Marque la cellule comme chargée même si aucune note n'existe
             $cell.html(addNoteIcon);
             $cell.data('loaded', true);
           }
@@ -151,7 +156,7 @@ jQuery(document).ready(async function($) {
     }
   }
 
-  // --- Création du modal si inexistant ---
+  // Création du modal si inexistant 
   if (!$('#myModal').length) {
     $('body').append(`
       <div id="myModal" class="my-modal">
@@ -194,7 +199,7 @@ jQuery(document).ready(async function($) {
   let currentDayId = null,
       currentSubcell = null;
 
-  // --- Observation d'une cellule (sur le <time>) ---
+  //  Observation d'une cellule (sur le <time>) 
   function observeHeaderCell($dayCell) {
     const timeEl = $dayCell.find('time[datetime], time[aria-label]').get(0);
     if (!timeEl) {
@@ -206,10 +211,10 @@ jQuery(document).ready(async function($) {
       addThreeSubcellsTo($dayCell);
       observer.disconnect();
     });
-    observer.observe(timeEl, { childList: true, characterData: true, subtree: true });
+    observer.observe(timeEl, { characterData: true, childList: true, subtree: true });
   }
 
-  // --- Création des sous-cellules dans une cellule d'en‑tête ---
+  // Création des sous-cellules dans une cellule d'en‑tête 
   function addThreeSubcellsTo($dayCell) {
     $dayCell.find('.my-extra-row').remove();
     $dayCell.removeClass('cells-initialized');
@@ -232,7 +237,7 @@ jQuery(document).ready(async function($) {
     observeHeaderCell($dayCell);
   }
 
-  // --- Ajoute les sous-cellules pour toutes les cellules non initialisées et lance le chargement batch ---
+  // Ajoute les sous-cellules pour toutes les cellules non initialisées et lance le chargement batch 
   function addThreeSubcells() {
     $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function(){
       addThreeSubcellsTo($(this));
@@ -241,7 +246,7 @@ jQuery(document).ready(async function($) {
     batchLoadNotes();
   }
 
-  // --- Ajuste la largeur des sous-cellules ---
+  // Ajuste la largeur des sous-cellules selon le cookie "bookly_cal_tab_id" 
   function adjustSubcellWidths() {
     let booklyCalTabId = $.cookie('bookly_cal_tab_id');
     if (booklyCalTabId && booklyCalTabId >= 2 && booklyCalTabId <= 4) {
@@ -260,7 +265,7 @@ jQuery(document).ready(async function($) {
     }
   }
 
-  // --- Gestion du clic sur une sous-cellule pour ouvrir le modal ---
+  // Gestion du clic sur une sous-cellule pour ouvrir le modal 
   $(document).on('click', '.my-subcell', async function(){
     currentDayId = $(this).closest('.my-extra-row').data('base-day');
     currentSubcell = $(this).data('subcell');
@@ -281,6 +286,7 @@ jQuery(document).ready(async function($) {
         $modalTextarea.val(resp.data.note || "");
         const savedLocId = resp.data.location_id || "";
         const savedTeamId = resp.data.team_member_id || "";
+        // Remplit le dropdown des locations sans doublon de l'option (Aucun)
         $modalLocDropdown.append(`<option value="">(Aucun)</option>`);
         let locOptions = Object.keys(locationDict).map(id => {
           let color = locationColors[id] || "#000000";
@@ -317,8 +323,10 @@ jQuery(document).ready(async function($) {
           },
           escapeMarkup: function(markup) { return markup; }
         });
+        // Remplit le dropdown des membres d'équipe
         $modalTeamDropdown.append(`<option value="">(Aucun)</option>`);
         await fetchAllTeamMembers();
+        // Pré-remplissage par défaut selon la sous-cellule
         if (!savedTeamId) {
           let subcellNum = parseInt(currentSubcell, 10);
           let defaultTeamId = "";
@@ -341,7 +349,7 @@ jQuery(document).ready(async function($) {
     }
   });
 
-  // --- Bouton Enregistrer ---
+  // Bouton Enregistrer 
   $modalSaveBtn.on('click', async function(){
     if (!currentDayId || !currentSubcell) {
       alert("Erreur : dayId / sous-cellule manquant");
@@ -397,7 +405,7 @@ jQuery(document).ready(async function($) {
     }
   });
 
-  // --- Bouton Supprimer ---
+  // Bouton Supprimer 
   $modalDeleteBtn.on('click', async function(){
     if (!currentDayId || !currentSubcell) {
       alert("Erreur : dayId / sous-cellule manquant");
@@ -430,8 +438,8 @@ jQuery(document).ready(async function($) {
     }
   });
 
-  // --- Détection des changements de vue / semaine via divers boutons ---
-  $(document).on('click', '.ec-start, #bookly-calendar-refresh, .ec-dayGridMonth, .ec-timeGridWeek, .ec-resourceTimeGridDay, .ec-grid, .ec-listWeek', function(){
+  // Détection des changements de vue / semaine via divers boutons 
+  $(document).on('click', '.ec-start, #bookly-calendar-refresh, .ec-dayGridMonth, .ec-timeGridWeek, .ec-resourceTimeGridDay, .ec-grid, .ec-listWeek, .table-condensed', function(){
     setTimeout(function(){
       $('.ec-day[role="columnheader"]').each(function(){
         $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
@@ -441,22 +449,13 @@ jQuery(document).ready(async function($) {
     }, 500);
   });
 
-  $(document).on('click', '.table-condensed', function(){
-    setTimeout(function(){
-      $('.ec-day[role="columnheader"]').each(function(){
-        $(this).find('.my-subcell').data('loaded', false);
-      });
-      batchLoadNotes();
-    }, 2000);
-  });
-
   $(document).on('click', '.nav-link', function(){
     setTimeout(function(){
       adjustSubcellWidths();
     }, 500);
   });
 
-  // --- IntersectionObserver pour les cellules non initialisées ---
+  // IntersectionObserver pour les cellules non initialisées 
   function initIntersectionObserver() {
     const observerOptions = { root: null, threshold: 0.1 };
     const intersectionObserver = new IntersectionObserver((entries, observer) => {
@@ -474,7 +473,7 @@ jQuery(document).ready(async function($) {
     });
   }
 
-  // --- Hook sur calendar.refetchEvents() pour rafraîchir les sous-cellules lors d'un changement de vue ---
+  // Hook sur calendar.refetchEvents() pour rafraîchir les sous-cellules lors d'un changement de vue 
   if (typeof calendar !== 'undefined' && calendar.ec && typeof calendar.ec.refetchEvents === 'function') {
     let originalRefetch = calendar.ec.refetchEvents;
     calendar.ec.refetchEvents = function(){
@@ -501,11 +500,12 @@ jQuery(document).ready(async function($) {
     $('.ec-day[role="columnheader"]:not(.cells-initialized)').each(function(){
       addThreeSubcellsTo($(this));
     });
+    console.log("Cellules affichées")
     adjustSubcellWidths();
     batchLoadNotes();
   }
 
-  // --- Lancement initial ---
+  // Lancement initial
   await fetchAllLocations();
   await fetchAllTeamMembers();
   initIntersectionObserver();
@@ -517,23 +517,25 @@ jQuery(document).ready(async function($) {
     batchLoadNotes();
   }, 2000);
 
-  // --- Observer sur le titre du calendrier pour détecter les changements de semaine ---
-  const titleElement = document.querySelector('.ec-title');
-  if (titleElement) {
-    const titleObserver = new MutationObserver((mutationsList) => {
-      mutationsList.forEach(mutation => {
-        if (mutation.type === 'childList' || mutation.type === 'characterData') {
-          console.log("[Bookly+Notes] Changement du titre:", titleElement.textContent);
-          $('.ec-day[role="columnheader"]').each(function(){
-            $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
-          });
-          addThreeSubcells();
-          adjustSubcellWidths();
-        }
+    // --- Observer sur le titre du calendrier pour détecter les changements de semaine ---
+    const titleElement = document.querySelector('.ec-title');
+    if (titleElement) {
+      const titleObserver = new MutationObserver((mutationsList) => {
+        mutationsList.forEach(mutation => {
+          if (mutation.type === 'childList' || mutation.type === 'characterData') {
+            // console.log("[Bookly+Notes] Changement du titre:", titleElement.textContent);
+            $('.ec-day[role="columnheader"]').each(function(){
+              $(this).removeClass('cells-initialized').find('.my-extra-row').remove();
+            });
+            setTimeout(function(){
+              batchLoadNotes();
+              console.log("observé");
+            }, 1500);
+          }
+        });
       });
-    });
-    titleObserver.observe(titleElement, { childList: true, characterData: true, subtree: true });
-  } else {
-    console.error("[Bookly+Notes] Élément .ec-title introuvable");
-  }
+      titleObserver.observe(titleElement, { childList: true, characterData: true, subtree: true });
+    } else {
+      console.error("[Bookly+Notes] Élément .ec-title introuvable");
+    }
 });
