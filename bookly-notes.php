@@ -3,7 +3,7 @@
  * Plugin Name: Bookly Notes
  * Description: Ajoute un système de notes par jour dans le calendrier Bookly
  * Author: Sköpe
- * Version: 1.1
+ * Version: 1.2
  */
 
 if ( ! defined( 'WPINC' ) ) {
