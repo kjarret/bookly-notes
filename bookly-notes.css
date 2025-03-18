@@ -58,6 +58,9 @@
 .my-subcell:hover {
   background: #E6E6E6;
 }
+.my-subcell:hover {
+  filter: brightness(0.8);
+}
 .my-subcell:last-child {
   margin-bottom: 0;
 }
@@ -157,10 +160,7 @@
     flex-direction: column;
   }
   .my-subcell {
-    width: 100%;
+    width: 100% !important;
     font-size: 8px;
   }
 }
-
-
-
